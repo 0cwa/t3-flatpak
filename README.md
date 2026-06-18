@@ -147,8 +147,20 @@ be retained across publishes. Publishing requires the `FLATPAK_GPG_PRIVATE_KEY`
 and `FLATPAK_GPG_KEY_ID` repository secrets.
 
 The scheduled `Update T3 Code AppImage` workflow checks the latest upstream
-GitHub release, updates the manifest pin when a new Linux x86_64 AppImage is
-published, and creates a matching `t3code-v...` release tag.
+GitHub release, downloads the Linux x86_64 AppImage, computes its SHA-256
+locally, updates the manifest pin when needed, and creates a matching
+`t3code-v...` release tag. The Flatpak build removes upstream Electron updater
+metadata from the extracted AppImage so application updates come from the
+Flatpak remote, not from T3 Code writing into `/app` at runtime. Keep
+`x-checker-data` pointed at `latest-linux.yml`; it is packaging metadata, not a
+runtime update channel.
+
+The scheduled `Update Bundled Runtime Pins` workflow keeps the sandbox-local
+Node.js, Git, and OpenSSH source pins current independently from T3 Code
+AppImage releases. It stays within the currently pinned major versions by
+default, validates the updater scripts and launchers, and opens a pull request
+instead of publishing directly to `main`. Use its manual `allow_major` input
+when you intentionally want to review a major runtime upgrade.
 
 Codeberg/Forgejo Actions support is available in `.forgejo/workflows/build.yml`.
 It expects a self-hosted x86_64 runner labeled `flatpak-x86_64` with `flatpak`,

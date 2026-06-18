@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 
 const manifestPath = "com.t3tools.t3code.yml";
@@ -11,13 +12,22 @@ function fail(message) {
   process.exit(1);
 }
 
-async function fetchText(url, headers = {}) {
+async function fetchResponse(url, headers = {}) {
   const response = await fetch(url, { headers });
   if (!response.ok) {
     fail(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
   }
 
-  return response.text();
+  return response;
+}
+
+async function fetchText(url, headers = {}) {
+  return (await fetchResponse(url, headers)).text();
+}
+
+async function fetchSha256(url, headers = {}) {
+  const buffer = Buffer.from(await (await fetchResponse(url, headers)).arrayBuffer());
+  return crypto.createHash("sha256").update(buffer).digest("hex");
 }
 
 function findLinuxAppImage(release) {
@@ -34,11 +44,7 @@ function findLinuxAppImage(release) {
 
 function sha256FromDigest(asset) {
   const match = /^sha256:([a-f0-9]{64})$/.exec(asset.digest || "");
-  if (!match) {
-    fail(`Missing or invalid GitHub sha256 digest for ${asset.name}`);
-  }
-
-  return match[1];
+  return match ? match[1] : null;
 }
 
 function replaceSource(manifest, tagName, assetName, sha256) {
@@ -79,10 +85,15 @@ async function main() {
   }
 
   const asset = findLinuxAppImage(release);
-  const sha256 = sha256FromDigest(asset);
+  const githubDigestSha256 = sha256FromDigest(asset);
 
   if (!asset.browser_download_url.endsWith(`/${tagName}/${asset.name}`)) {
     fail(`Unexpected download URL for ${asset.name}: ${asset.browser_download_url}`);
+  }
+
+  const sha256 = await fetchSha256(asset.browser_download_url, headers);
+  if (githubDigestSha256 && githubDigestSha256 !== sha256) {
+    fail(`Downloaded ${asset.name} sha256 ${sha256} did not match GitHub asset digest ${githubDigestSha256}`);
   }
 
   const manifest = fs.readFileSync(manifestPath, "utf8");

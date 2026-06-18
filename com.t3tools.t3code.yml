@@ -63,6 +63,12 @@ modules:
     build-commands:
       - chmod +x T3-Code.AppImage
       - ./T3-Code.AppImage --appimage-extract
+      - find squashfs-root -type f \( -name app-update.yml -o -name dev-app-update.yml \) -delete
+      - |
+        if find squashfs-root -type f \( -name app-update.yml -o -name dev-app-update.yml \) -print -quit | grep -q .; then
+          echo "Unexpected Electron updater metadata remains in extracted AppImage." >&2
+          exit 1
+        fi
       - desktop-file-edit --set-key="Exec" --set-value="startt3code %U" --set-icon=$FLATPAK_ID
         --add-mime-type=x-scheme-handler/t3code
         squashfs-root/t3code.desktop

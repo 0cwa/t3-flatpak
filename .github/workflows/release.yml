@@ -68,21 +68,32 @@ jobs:
           bundle="t3code-x86_64.flatpak"
           metadata="t3code-x86_64.verification.txt"
 
-          pin_count="$(grep -Ec '^[[:space:]]+url: https://github\.com/pingdotgg/t3code/releases/download/[^/]+/T3-Code-[^/]+-x86_64\.AppImage$' com.t3tools.t3code.yml || true)"
-          hash_count="$(grep -Ec '^[[:space:]]+sha256: [a-f0-9]{64}$' com.t3tools.t3code.yml || true)"
+          appimage_pin_count="$(grep -Ec '^[[:space:]]+url: https://github\.com/pingdotgg/t3code/releases/download/[^/]+/T3-Code-[^/]+-x86_64\.AppImage$' com.t3tools.t3code.yml || true)"
+          appimage_hash_count="$(awk '
+            /^[[:space:]]+url: https:\/\/github\.com\/pingdotgg\/t3code\/releases\/download\/[^/]+\/T3-Code-[^/]+-x86_64\.AppImage$/ { in_appimage = 1; next }
+            in_appimage && /^[[:space:]]+sha256: [a-f0-9]{64}$/ { count++; in_appimage = 0; next }
+            in_appimage && /^[[:space:]]+url:/ { in_appimage = 0 }
+            END { print count + 0 }
+          ' com.t3tools.t3code.yml)"
+          runtime_pin_count="$(grep -Ec '^[[:space:]]+url: (https://nodejs\.org/dist/v[0-9]+\.[0-9]+\.[0-9]+/node-v[0-9]+\.[0-9]+\.[0-9]+-linux-x64\.tar\.xz|https://mirrors\.edge\.kernel\.org/pub/software/scm/git/git-[0-9]+\.[0-9]+\.[0-9]+\.tar\.xz|https://cdn\.openbsd\.org/pub/OpenBSD/OpenSSH/portable/openssh-[0-9]+\.[0-9]+p[0-9]+\.tar\.gz)$' com.t3tools.t3code.yml || true)"
 
-          if [ "$pin_count" -ne 1 ]; then
-            echo "Expected exactly one pinned T3 Code AppImage release URL in com.t3tools.t3code.yml; found $pin_count." >&2
+          if [ "$appimage_pin_count" -ne 1 ]; then
+            echo "Expected exactly one pinned T3 Code AppImage release URL in com.t3tools.t3code.yml; found $appimage_pin_count." >&2
             exit 1
           fi
 
-          if [ "$hash_count" -ne 1 ]; then
-            echo "Expected exactly one T3 Code AppImage sha256 pin in com.t3tools.t3code.yml; found $hash_count." >&2
+          if [ "$appimage_hash_count" -ne 1 ]; then
+            echo "Expected exactly one T3 Code AppImage sha256 pin adjacent to its source URL; found $appimage_hash_count." >&2
             exit 1
           fi
 
-          if grep -Eq '^[[:space:]]+url: .*/releases/(latest|download/latest)/.*T3-Code-.*\.AppImage$' com.t3tools.t3code.yml; then
-            echo "Release AppImage source must be pinned to an immutable upstream release, not latest." >&2
+          if [ "$runtime_pin_count" -ne 3 ]; then
+            echo "Expected pinned Node.js, Git, and OpenSSH runtime source URLs; found $runtime_pin_count." >&2
+            exit 1
+          fi
+
+          if grep -Eq '^[[:space:]]+url: https://github\.com/pingdotgg/t3code/releases/(latest/download|download/latest)/T3-Code-.*\.AppImage$' com.t3tools.t3code.yml; then
+            echo "Release inputs must be pinned to immutable upstream URLs, not latest." >&2
             exit 1
           fi
 
@@ -101,7 +112,13 @@ jobs:
             sha256sum com.t3tools.t3code.yml
             echo
             echo "Pinned upstream AppImage input:"
-            grep -E '^[[:space:]]+(url: https://github\.com/pingdotgg/t3code/releases/download/[^/]+/T3-Code-[^/]+-x86_64\.AppImage|sha256: [a-f0-9]{64})$' com.t3tools.t3code.yml | sed 's/^[[:space:]]*//'
+            awk '
+              /^[[:space:]]+url: https:\/\/github\.com\/pingdotgg\/t3code\/releases\/download\/[^/]+\/T3-Code-[^/]+-x86_64\.AppImage$/ { print; in_appimage = 1; next }
+              in_appimage && /^[[:space:]]+sha256: [a-f0-9]{64}$/ { print; in_appimage = 0; next }
+            ' com.t3tools.t3code.yml | sed 's/^[[:space:]]*//'
+            echo
+            echo "Pinned bundled runtime inputs:"
+            grep -E '^[[:space:]]+url: (https://nodejs\.org/dist/v[0-9]+\.[0-9]+\.[0-9]+/node-v[0-9]+\.[0-9]+\.[0-9]+-linux-x64\.tar\.xz|https://mirrors\.edge\.kernel\.org/pub/software/scm/git/git-[0-9]+\.[0-9]+\.[0-9]+\.tar\.xz|https://cdn\.openbsd\.org/pub/OpenBSD/OpenSSH/portable/openssh-[0-9]+\.[0-9]+p[0-9]+\.tar\.gz)$' com.t3tools.t3code.yml | sed 's/^[[:space:]]*//'
             echo
             echo "Released bundle SHA256:"
             sha256sum "$bundle"
