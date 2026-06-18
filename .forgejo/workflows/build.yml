@@ -1,0 +1,30 @@
+name: CI Build Flatpak
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  flatpak:
+    name: Flatpak x86_64
+    runs-on: flatpak-x86_64
+    steps:
+      - uses: https://code.forgejo.org/actions/checkout@v6
+
+      - name: Build repository
+        run: |
+          flatpak-builder --force-clean \
+            --install-deps-from=flathub \
+            --repo=repo \
+            builddir \
+            com.t3tools.t3code.yml
+
+      - name: Build bundle
+        run: |
+          flatpak build-bundle \
+            repo \
+            t3code.flatpak \
+            com.t3tools.t3code \
+            --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo

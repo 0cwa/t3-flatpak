@@ -17,7 +17,7 @@ jobs:
             runner: ubuntu-24.04
     runs-on: ${{ matrix.variant.runner }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
         with:
           bundle: t3code.flatpak

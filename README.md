@@ -18,3 +18,48 @@ agent, host command spawning, or broad host filesystems.
 
 Provider CLIs, source-control tools, and project directory access are expected
 to be unavailable until later packaging phases add explicit support.
+
+## Project access
+
+T3 Code's private app data lives under `~/.var/app/com.t3tools.t3code`. The
+default Flatpak sandbox does not grant access to your repositories.
+
+For persistent access to one project directory, add a narrow user override:
+
+```bash
+flatpak override --user --filesystem=/path/to/project:rw com.t3tools.t3code
+```
+
+To revoke that project later:
+
+```bash
+flatpak override --user --nofilesystem=/path/to/project com.t3tools.t3code
+```
+
+Inspect active permissions with:
+
+```bash
+flatpak info --show-permissions com.t3tools.t3code
+flatpak override --user --show com.t3tools.t3code
+```
+
+Mounted project paths are visible to T3 Code and any sandbox-local tools it runs,
+including terminals and provider CLIs. Broad `home` or `host` filesystem grants
+are intentionally not recommended.
+
+## CI
+
+GitHub Actions builds the x86_64 Flatpak bundle on pushes, pull requests, and
+manual dispatches. Release tags matching `v*` or `t3code-v*` run a verified
+release workflow that checks the manifest uses an immutable upstream AppImage URL
+and pinned SHA-256 before publishing bundle artifacts.
+
+The scheduled `Update T3 Code AppImage` workflow checks the latest upstream
+GitHub release, updates the manifest pin when a new Linux x86_64 AppImage is
+published, and creates a matching `t3code-v...` release tag.
+
+Codeberg/Forgejo Actions support is available in `.forgejo/workflows/build.yml`.
+It expects a self-hosted x86_64 runner labeled `flatpak-x86_64` with `flatpak`,
+`flatpak-builder`, network access to Flathub and GitHub release assets, and
+enough permissions for Flatpak builds. If hosted Codeberg CI is required instead
+of a maintained runner, Woodpecker is the practical Codeberg-hosted path.

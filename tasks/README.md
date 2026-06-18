@@ -27,14 +27,16 @@ Current implementation notes:
 - Desktop file inside the AppImage: `t3code.desktop`.
 - Icon name inside the AppImage: `t3code.png`.
 - The manifest is x86_64-only unless upstream starts publishing a Linux aarch64 AppImage.
-- The GitHub Actions workflow should build only x86_64 until a Linux aarch64 AppImage exists.
-- A Codeberg Forgejo Actions workflow should use a self-hosted runner with Flatpak tooling, direct `flatpak-builder` commands, and x86_64 only until a Linux aarch64 AppImage exists.
+- The GitHub Actions build, release, and upstream-update workflows build only x86_64 until a Linux aarch64 AppImage exists.
+- The Codeberg Forgejo Actions workflow uses a self-hosted `flatpak-x86_64` runner with Flatpak tooling, direct `flatpak-builder` commands, and x86_64 only until a Linux aarch64 AppImage exists.
 - The app's in-app electron-updater flow is not the Flatpak update mechanism. Keep `x-checker-data` for packaging automation through `latest-linux.yml`.
 - T3 Code's backend, git, SSH, terminals, Tailscale, and provider integrations run as subprocesses inside the sandbox. Support them by bundling or installing sandbox-local tools, not by spawning host commands.
+- Persistent project access is documented through explicit one-directory `flatpak override --user --filesystem=/path/to/project:rw com.t3tools.t3code` grants rather than broad manifest permissions.
+- Remaining implementation work starts at `03-bundle-core-runtime.md`: bundle sandbox-local Node.js, npm, git, and OpenSSH before adding provider install commands.
 
 Known upstream details from source/AppImage review:
 
 - Linux executable inside the AppImage: `t3code`.
 - Desktop file inside the AppImage: `t3code.desktop`.
 - Icon name inside the AppImage: `t3code.png`.
-- Latest verified release during this handoff was `v0.0.27`, but always verify the latest release before updating checksums or URLs.
+- Latest verified release during this handoff was `v0.0.27` on 2026-06-18, but always verify the latest release before updating checksums or URLs.

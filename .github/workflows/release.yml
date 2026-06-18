@@ -1,0 +1,152 @@
+name: Release Flatpak
+
+on:
+  push:
+    tags:
+      - "v*"
+      - "t3code-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to release, for example t3code-v0.0.27"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build and verify x86_64
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
+      options: --privileged
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Set stable build timestamp
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+
+          commit="$(git rev-parse --verify HEAD^{commit})"
+          source_date_epoch="$(git show -s --format=%ct "$commit")"
+
+          if [[ ! "$source_date_epoch" =~ ^[0-9]+$ ]]; then
+            echo "Could not determine a numeric SOURCE_DATE_EPOCH for $commit." >&2
+            exit 1
+          fi
+
+          echo "SOURCE_DATE_EPOCH=$source_date_epoch" >> "$GITHUB_ENV"
+          echo "Using SOURCE_DATE_EPOCH=$source_date_epoch from commit $commit."
+
+      - name: Build release bundle
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: t3code-x86_64.flatpak
+          manifest-path: com.t3tools.t3code.yml
+          arch: x86_64
+          build-dir: builddir-x86_64-release
+          repo-dir: repo-x86_64-release
+          state-dir: .flatpak-builder-x86_64-release
+          cache: false
+          restore-cache: false
+          upload-artifact: false
+          verbose: true
+
+      - name: Verify release inputs and bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          bundle="t3code-x86_64.flatpak"
+          metadata="t3code-x86_64.verification.txt"
+
+          pin_count="$(grep -Ec '^[[:space:]]+url: https://github\.com/pingdotgg/t3code/releases/download/[^/]+/T3-Code-[^/]+-x86_64\.AppImage$' com.t3tools.t3code.yml || true)"
+          hash_count="$(grep -Ec '^[[:space:]]+sha256: [a-f0-9]{64}$' com.t3tools.t3code.yml || true)"
+
+          if [ "$pin_count" -ne 1 ]; then
+            echo "Expected exactly one pinned T3 Code AppImage release URL in com.t3tools.t3code.yml; found $pin_count." >&2
+            exit 1
+          fi
+
+          if [ "$hash_count" -ne 1 ]; then
+            echo "Expected exactly one T3 Code AppImage sha256 pin in com.t3tools.t3code.yml; found $hash_count." >&2
+            exit 1
+          fi
+
+          if grep -Eq '^[[:space:]]+url: .*/releases/(latest|download/latest)/.*T3-Code-.*\.AppImage$' com.t3tools.t3code.yml; then
+            echo "Release AppImage source must be pinned to an immutable upstream release, not latest." >&2
+            exit 1
+          fi
+
+          sha256sum "$bundle" > "$bundle.sha256"
+
+          {
+            echo "Release verification"
+            echo "Repository: $GITHUB_REPOSITORY"
+            echo "Workflow: $GITHUB_WORKFLOW"
+            echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+            echo "Git ref: $GITHUB_REF"
+            echo "Git SHA: $GITHUB_SHA"
+            echo "Source date epoch: ${SOURCE_DATE_EPOCH:-unset}"
+            echo
+            echo "Manifest SHA256:"
+            sha256sum com.t3tools.t3code.yml
+            echo
+            echo "Pinned upstream AppImage input:"
+            grep -E '^[[:space:]]+(url: https://github\.com/pingdotgg/t3code/releases/download/[^/]+/T3-Code-[^/]+-x86_64\.AppImage|sha256: [a-f0-9]{64})$' com.t3tools.t3code.yml | sed 's/^[[:space:]]*//'
+            echo
+            echo "Released bundle SHA256:"
+            sha256sum "$bundle"
+          } | tee "$metadata"
+
+      - name: Upload verified bundle
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-flatpak-x86_64
+          path: |
+            t3code-x86_64.flatpak
+            t3code-x86_64.flatpak.sha256
+            t3code-x86_64.verification.txt
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub release
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download verified bundles
+        uses: actions/download-artifact@v8
+        with:
+          pattern: t3code-flatpak-*
+          path: dist
+          merge-multiple: true
+
+      - name: Verify checksums
+        working-directory: dist
+        run: |
+          set -euo pipefail
+
+          sha256sum -c *.sha256
+          sha256sum *.flatpak > SHA256SUMS
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "$TAG_NAME" >/dev/null 2>&1; then
+            gh release upload "$TAG_NAME" dist/* --clobber
+          else
+            gh release create "$TAG_NAME" dist/* --verify-tag --title "$TAG_NAME" --generate-notes
+          fi
