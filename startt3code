@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-export TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID:-io.filen.Filen}"
+export TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID:-com.t3tools.t3code}"
 
 declare -a FLAGS=()
 
@@ -19,4 +19,4 @@ else
 fi
 
 echo "Passing the following arguments to Electron:" "${FLAGS[@]}" "$@"
-zypak-wrapper /app/bin/filen/@filendesktop "${FLAGS[@]}" "$@"
+zypak-wrapper /app/bin/t3code/t3code "${FLAGS[@]}" "$@"

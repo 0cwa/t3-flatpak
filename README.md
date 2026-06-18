@@ -1,15 +1,20 @@
-# Filen Flatpak
+# T3 Code Flatpak
 
-[Filen](https://filen.io) as Flatpak! Isn't that cool? Lowering the dependance on AppImages everyday.
+[T3 Code](https://github.com/pingdotgg/t3code) repackaged as a Flatpak from the upstream AppImage.
 
-It's still technically AppImage but it was repackaged as Flatpak for immutable and atomic system users out there (like me). Hugely based on [Vesktop Flathub repo](https://github.com/flathub/dev.vencord.Vesktop).
+It is still technically the upstream AppImage payload, installed into a Flatpak wrapper for immutable and atomic systems. This repository is based on the packaging pattern used by the [Vesktop Flathub repo](https://github.com/flathub/dev.vencord.Vesktop).
 
 ## Wayland
 
-Filen runs natively on Wayland when launched from a Wayland session. X11 is still
+T3 Code runs natively on Wayland when launched from a Wayland session. X11 is still
 available as a fallback on non-Wayland sessions through Flatpak's `fallback-x11`
 socket.
 
-## Tray icons
+## Sandbox
 
-To get a working Tray Icon on GNOME, install the [appindicator-support](https://extensions.gnome.org/extension/615/appindicator-support/) extension.
+The default sandbox grants display, IPC, network, portal-based file picking, and
+cursor theme access. It does not grant access to the full home directory, SSH
+agent, host command spawning, or broad host filesystems.
+
+Provider CLIs, source-control tools, and project directory access are expected
+to be unavailable until later packaging phases add explicit support.

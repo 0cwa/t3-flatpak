@@ -1,0 +1,55 @@
+app-id: com.t3tools.t3code
+
+runtime: org.freedesktop.Platform
+runtime-version: &runtime-version '24.08'
+sdk: org.freedesktop.Sdk
+
+base: org.electronjs.Electron2.BaseApp
+base-version: *runtime-version
+
+command: startt3code
+separate-locales: false
+
+finish-args:
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --share=ipc
+  - --share=network
+  - --env=GTK_USE_PORTAL=1
+  - --env=T3CODE_DESKTOP_PROTOCOL_REGISTRATION_MANAGED=1
+  - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons # This is used to show the correct cursor on Wayland
+
+modules:
+  - name: t3code
+    buildsystem: simple
+    build-commands:
+      - chmod +x T3-Code.AppImage
+      - ./T3-Code.AppImage --appimage-extract
+      - desktop-file-edit --set-key="Exec" --set-value="startt3code %U" --set-icon=$FLATPAK_ID
+        --add-mime-type=x-scheme-handler/t3code
+        squashfs-root/t3code.desktop
+      - |
+        for icon in 16 22 24 32 48 64 128 256 512; do
+          install -D squashfs-root/usr/share/icons/hicolor/${icon}x${icon}/apps/t3code.png \
+              /app/share/icons/hicolor/${icon}x${icon}/apps/com.t3tools.t3code.png
+        done
+      - install -D squashfs-root/t3code.desktop /app/share/applications/com.t3tools.t3code.desktop
+      - install -Dm755 startt3code /app/bin/startt3code
+      - install -D com.t3tools.t3code.metainfo.xml -t /app/share/metainfo/
+      - mv squashfs-root /app/bin/t3code
+
+    sources:
+      - type: file
+        path: startt3code
+
+      - type: file
+        path: com.t3tools.t3code.metainfo.xml
+
+      - type: file
+        url: https://github.com/pingdotgg/t3code/releases/download/v0.0.27/T3-Code-0.0.27-x86_64.AppImage
+        dest-filename: T3-Code.AppImage
+        sha256: 00b926ef04956c395947b4d655a8373516cfd64bc6250aa6a51d66999bd20805
+        only-arches: [x86_64]
+        x-checker-data:
+          type: electron-updater
+          url: https://github.com/pingdotgg/t3code/releases/latest/download/latest-linux.yml
