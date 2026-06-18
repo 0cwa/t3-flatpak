@@ -1,0 +1,9 @@
+[Flatpak Repo]
+Title=T3 Code Flatpak
+Url=@FLATPAK_REPO_URL@/repo/
+Homepage=https://github.com/@GITHUB_REPOSITORY@
+Comment=Unofficial Flatpak repository for T3 Code
+Description=T3 Code packaged as a Flatpak from the upstream AppImage.
+DefaultBranch=master
+DeploySideloadCollectionID=com.t3tools.t3code.Repository
+GPGKey=@GPG_KEY@

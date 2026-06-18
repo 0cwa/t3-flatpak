@@ -32,7 +32,8 @@ Current implementation notes:
 - The app's in-app electron-updater flow is not the Flatpak update mechanism. Keep `x-checker-data` for packaging automation through `latest-linux.yml`.
 - T3 Code's backend, git, SSH, terminals, Tailscale, and provider integrations run as subprocesses inside the sandbox. Support them by bundling or installing sandbox-local tools, not by spawning host commands.
 - Persistent project access is documented through explicit one-directory `flatpak override --user --filesystem=/path/to/project:rw com.t3tools.t3code` grants rather than broad manifest permissions.
-- Remaining implementation work starts at `05-selective-project-mounts.md`: document narrow project directory access overrides after the sandbox-local runtime and provider install helper.
+- GitHub Pages publishing is handled by `.github/workflows/pages-flatpak-repo.yml`. It builds a signed x86_64 OSTree repo at `repo/`, generates `t3code.flatpakrepo` and `t3code.flatpakref` from templates, and deploys the Pages artifact with the official Pages actions. The default generated URL is `https://OWNER.github.io/REPOSITORY/t3code.flatpakrepo`, with `https://OWNER.github.io/t3code.flatpakrepo` for `OWNER.github.io` repositories. Set the public repository variable `FLATPAK_REPO_URL` if Pages uses a custom domain or nonstandard base URL. Automatic publishing requires `PUBLISH_FLATPAK_REPO=true` plus `FLATPAK_GPG_PRIVATE_KEY` and `FLATPAK_GPG_KEY_ID` secrets.
+- Remaining implementation work starts after `05-selective-project-mounts.md`; future maintenance should add independent repinning automation for Node.js, Git, and OpenSSH without changing sandbox permissions.
 
 Known upstream details from source/AppImage review:
 
