@@ -20,6 +20,44 @@ finish-args:
   - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons # This is used to show the correct cursor on Wayland
 
 modules:
+  - name: nodejs
+    buildsystem: simple
+    build-commands:
+      - install -d /app/lib/nodejs /app/bin
+      - cp -a . /app/lib/nodejs
+      - ln -s ../lib/nodejs/bin/node /app/bin/node
+      - ln -s ../lib/nodejs/bin/npm /app/bin/npm
+      - ln -s ../lib/nodejs/bin/npx /app/bin/npx
+      - ln -s ../lib/nodejs/bin/corepack /app/bin/corepack
+    sources:
+      - type: archive
+        url: https://nodejs.org/dist/v24.17.0/node-v24.17.0-linux-x64.tar.xz
+        sha256: ab343a1b747c7cbf3630dfd7dbf818c5423fab2eb4f5ad1afc896f6bd121a917
+        only-arches: [x86_64]
+
+  - name: git
+    buildsystem: simple
+    build-commands:
+      - make prefix=/app NO_GETTEXT=YesPlease NO_TCLTK=YesPlease NO_PERL=YesPlease all
+      - make prefix=/app NO_GETTEXT=YesPlease NO_TCLTK=YesPlease NO_PERL=YesPlease install
+    sources:
+      - type: archive
+        url: https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.54.0.tar.xz
+        sha256: f689162364c10de79ef89aa8dbf48731eb057e34edbbd20aca510ce0154681a3
+
+  - name: openssh
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=/app --sysconfdir=/app/etc/ssh --with-privsep-path=/app/var/empty --without-pam
+      - make ssh scp sftp ssh-add ssh-agent ssh-keygen ssh-keyscan
+      - install -d /app/bin /app/etc/ssh
+      - install -m755 ssh scp sftp ssh-add ssh-agent ssh-keygen ssh-keyscan /app/bin
+      - install -m644 ssh_config /app/etc/ssh/ssh_config
+    sources:
+      - type: archive
+        url: https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.3p1.tar.gz
+        sha256: 56682a36bb92dcf4b4f016fd8ec8e74059b79a8de25c15d670d731e7d18e45f4
+
   - name: t3code
     buildsystem: simple
     build-commands:
@@ -35,12 +73,15 @@ modules:
         done
       - install -D squashfs-root/t3code.desktop /app/share/applications/com.t3tools.t3code.desktop
       - install -Dm755 startt3code /app/bin/startt3code
+      - install -Dm755 t3code-install-provider /app/bin/t3code-install-provider
       - install -D com.t3tools.t3code.metainfo.xml -t /app/share/metainfo/
       - mv squashfs-root /app/bin/t3code
 
     sources:
       - type: file
         path: startt3code
+      - type: file
+        path: t3code-install-provider
 
       - type: file
         path: com.t3tools.t3code.metainfo.xml

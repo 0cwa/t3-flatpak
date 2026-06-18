@@ -32,7 +32,7 @@ Current implementation notes:
 - The app's in-app electron-updater flow is not the Flatpak update mechanism. Keep `x-checker-data` for packaging automation through `latest-linux.yml`.
 - T3 Code's backend, git, SSH, terminals, Tailscale, and provider integrations run as subprocesses inside the sandbox. Support them by bundling or installing sandbox-local tools, not by spawning host commands.
 - Persistent project access is documented through explicit one-directory `flatpak override --user --filesystem=/path/to/project:rw com.t3tools.t3code` grants rather than broad manifest permissions.
-- Remaining implementation work starts at `03-bundle-core-runtime.md`: bundle sandbox-local Node.js, npm, git, and OpenSSH before adding provider install commands.
+- Remaining implementation work starts at `05-selective-project-mounts.md`: document narrow project directory access overrides after the sandbox-local runtime and provider install helper.
 
 Known upstream details from source/AppImage review:
 

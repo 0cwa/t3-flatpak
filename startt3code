@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 
 export TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID:-com.t3tools.t3code}"
+export NPM_CONFIG_PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/npm-global"
+export NPM_CONFIG_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/npm"
+export PATH="$NPM_CONFIG_PREFIX/bin:/app/bin:$PATH"
+
+mkdir -p "$NPM_CONFIG_PREFIX" "$NPM_CONFIG_CACHE"
 
 declare -a FLAGS=()
 

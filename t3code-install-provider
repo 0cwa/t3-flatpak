@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  printf '%s\n' 'usage: t3code-install-provider {codex|claude|opencode}' >&2
+}
+
+if [[ "$#" -ne 1 ]]; then
+  usage
+  exit 2
+fi
+
+case "$1" in
+  codex)
+    package='@openai/codex'
+    ;;
+  claude)
+    package='@anthropic-ai/claude-code'
+    ;;
+  opencode)
+    package='opencode-ai'
+    ;;
+  *)
+    usage
+    exit 2
+    ;;
+esac
+
+export NPM_CONFIG_PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/npm-global"
+export NPM_CONFIG_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/npm"
+export PATH="$NPM_CONFIG_PREFIX/bin:/app/bin:$PATH"
+
+mkdir -p "$NPM_CONFIG_PREFIX" "$NPM_CONFIG_CACHE"
+
+exec npm install -g "${package}@latest"
