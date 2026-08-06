@@ -13,11 +13,20 @@ jobs:
     name: Check latest upstream AppImage
     runs-on: ubuntu-24.04
     steps:
+      - name: Verify downstream workflow token
+        env:
+          DOWNSTREAM_WORKFLOW_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: |
+          if [ -z "${DOWNSTREAM_WORKFLOW_TOKEN:-}" ]; then
+            echo "Set the GH_TOKEN secret so updater pushes trigger CI, release, and Pages workflows." >&2
+            exit 1
+          fi
+
       - uses: actions/checkout@v5
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.GH_TOKEN || github.token }}
+          token: ${{ secrets.GH_TOKEN }}
 
       - uses: actions/setup-node@v5
         with:

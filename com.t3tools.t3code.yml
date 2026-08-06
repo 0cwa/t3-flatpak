@@ -8,6 +8,7 @@ base: org.electronjs.Electron2.BaseApp
 base-version: *runtime-version
 
 command: startt3code
+branch: master
 separate-locales: false
 
 finish-args:

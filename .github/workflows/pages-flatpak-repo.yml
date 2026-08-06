@@ -1,4 +1,4 @@
-name: Publish Flatpak Repo to GitHub Pages
+name: Publish Flatpak Repository to GitHub Pages
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: github-pages-flatpak-repo
+  group: t3code-flatpak-pages
   cancel-in-progress: true
 
 env:
@@ -19,15 +19,25 @@ env:
 
 jobs:
   build:
-    name: Build signed OSTree repo
-    if: ${{ vars.PUBLISH_FLATPAK_REPO == 'true' || github.event_name == 'workflow_dispatch' }}
+    name: Build unsigned OSTree repo (${{ matrix.variant.arch }})
+    if: ${{ github.ref == 'refs/heads/main' && (vars.PUBLISH_FLATPAK_REPO == 'true' || github.event_name == 'workflow_dispatch') }}
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
       options: --privileged
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        variant:
+          - arch: x86_64
+            runner: ubuntu-24.04
+    runs-on: ${{ matrix.variant.runner }}
     steps:
-      - uses: actions/checkout@v5
+      # Pin the source to the commit that triggered this run. No secrets are
+      # available in this job; it only produces unsigned repository data.
+      - name: Check out triggering commit
+        uses: actions/checkout@v5
         with:
+          ref: ${{ github.sha }}
           fetch-depth: 0
 
       - name: Set stable build timestamp
@@ -36,17 +46,94 @@ jobs:
           set -euo pipefail
 
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
-
-          commit="$(git rev-parse --verify HEAD^{commit})"
-          source_date_epoch="$(git show -s --format=%ct "$commit")"
-
-          if [[ ! "$source_date_epoch" =~ ^[0-9]+$ ]]; then
-            echo "Could not determine a numeric SOURCE_DATE_EPOCH for $commit." >&2
-            exit 1
-          fi
-
+          source_date_epoch="$(git show -s --format=%ct "$GITHUB_SHA")"
+          test "$source_date_epoch" -gt 0
           echo "SOURCE_DATE_EPOCH=$source_date_epoch" >> "$GITHUB_ENV"
-          echo "Using SOURCE_DATE_EPOCH=$source_date_epoch from commit $commit."
+
+      - name: Restore architecture repository history
+        id: build-repo-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: repo-${{ matrix.variant.arch }}
+          key: t3code-flatpak-build-${{ matrix.variant.arch }}-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            t3code-flatpak-build-${{ matrix.variant.arch }}-${{ github.ref_name }}-
+
+      - name: Build unsigned architecture repository
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          flatpak remote-add --user --if-not-exists flathub "$RUNTIME_REPO"
+
+          flatpak-builder \
+            --disable-rofiles-fuse \
+            --force-clean \
+            --install-deps-from=flathub \
+            --arch="${{ matrix.variant.arch }}" \
+            --repo="repo-${{ matrix.variant.arch }}" \
+            --collection-id="$COLLECTION_ID" \
+            "builddir-${{ matrix.variant.arch }}" \
+            com.t3tools.t3code.yml
+
+          expected_ref="app/${APP_ID}/${{ matrix.variant.arch }}/master"
+          ostree rev-parse \
+            --repo="repo-${{ matrix.variant.arch }}" \
+            "$expected_ref" >/dev/null
+
+          printf '%s\n' "$expected_ref" > "t3code-ref-${{ matrix.variant.arch }}.txt"
+
+          # Upload one archive so the repository's object layout is preserved
+          # when the untrusted build result crosses the job boundary.
+          tar \
+            --sort=name \
+            --mtime="@${SOURCE_DATE_EPOCH}" \
+            --owner=0 \
+            --group=0 \
+            --numeric-owner \
+            -czf "t3code-ostree-${{ matrix.variant.arch }}.tar.gz" \
+            "repo-${{ matrix.variant.arch }}"
+
+      - name: Upload unsigned architecture repository
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-ostree-${{ matrix.variant.arch }}
+          path: |
+            t3code-ostree-${{ matrix.variant.arch }}.tar.gz
+            t3code-ref-${{ matrix.variant.arch }}.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+      - name: Save architecture repository history
+        uses: actions/cache/save@v4
+        with:
+          path: repo-${{ matrix.variant.arch }}
+          key: ${{ steps.build-repo-cache.outputs.cache-primary-key }}
+
+  aggregate:
+    name: Sign and publish x86_64 repository
+    needs: build
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
+      options: --privileged
+    steps:
+      - name: Check out triggering commit
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Set stable build timestamp
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          source_date_epoch="$(git show -s --format=%ct "$GITHUB_SHA")"
+          test "$source_date_epoch" -gt 0
+          echo "SOURCE_DATE_EPOCH=$source_date_epoch" >> "$GITHUB_ENV"
 
       - name: Import Flatpak repository signing key
         env:
@@ -57,78 +144,132 @@ jobs:
           set -euo pipefail
 
           if [ -z "${FLATPAK_GPG_PRIVATE_KEY:-}" ] || [ -z "${FLATPAK_GPG_KEY_ID:-}" ]; then
-            echo "Set FLATPAK_GPG_PRIVATE_KEY and FLATPAK_GPG_KEY_ID secrets before publishing the Flatpak repository." >&2
+            echo "Set FLATPAK_GPG_PRIVATE_KEY and FLATPAK_GPG_KEY_ID before publishing." >&2
             exit 1
           fi
 
-          export GNUPGHOME="$RUNNER_TEMP/gnupg"
-          mkdir -p "$GNUPGHOME"
-          chmod 700 "$GNUPGHOME"
+          gnupg_home="$RUNNER_TEMP/gnupg"
+          mkdir -p "$gnupg_home"
+          chmod 700 "$gnupg_home"
+          printf '%s' "$FLATPAK_GPG_PRIVATE_KEY" | gpg --batch --homedir "$gnupg_home" --import
+          gpg --batch --homedir "$gnupg_home" --list-secret-keys "$FLATPAK_GPG_KEY_ID" >/dev/null
 
-          printf '%s' "$FLATPAK_GPG_PRIVATE_KEY" | gpg --batch --import
-          gpg --batch --list-secret-keys "$FLATPAK_GPG_KEY_ID"
-          gpg --batch --export "$FLATPAK_GPG_KEY_ID" | base64 --wrap=0 > "$RUNNER_TEMP/t3code-flatpak.gpg.b64"
+          gpg --batch --homedir "$gnupg_home" --export "$FLATPAK_GPG_KEY_ID" \
+            | base64 --wrap=0 > "$RUNNER_TEMP/t3code-flatpak.gpg.b64"
 
-          echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
+          echo "GNUPGHOME=$gnupg_home" >> "$GITHUB_ENV"
 
-      - name: Restore previous Flatpak repo cache
-        uses: actions/cache@v4
+      - name: Download unsigned architecture repository
+        uses: actions/download-artifact@v8
+        with:
+          pattern: t3code-ostree-*
+          path: inputs
+          merge-multiple: false
+
+      - name: Restore previous final repository
+        id: repo-cache
+        uses: actions/cache/restore@v4
         with:
           path: site/repo
-          key: flatpak-pages-repo-${{ github.run_id }}
+          key: t3code-flatpak-pages-${{ github.ref_name }}-${{ github.run_id }}
           restore-keys: |
-            flatpak-pages-repo-
+            t3code-flatpak-pages-${{ github.ref_name }}-
 
-      - name: Build Flatpak repository
+      - name: Validate, sign, and aggregate exact application ref
         env:
           FLATPAK_GPG_KEY_ID: ${{ secrets.FLATPAK_GPG_KEY_ID }}
         shell: bash
         run: |
           set -euo pipefail
 
-          flatpak remote-add --user --if-not-exists flathub "$RUNTIME_REPO"
+          mkdir -p site
+          if [ ! -f site/repo/config ]; then
+            ostree init \
+              --repo=site/repo \
+              --mode=archive-z2 \
+              --collection-id="$COLLECTION_ID"
+          fi
 
-          flatpak-builder --force-clean \
-            --install-deps-from=flathub \
+          arch=x86_64
+          artifact_dir="inputs/t3code-ostree-${arch}"
+          archive="$artifact_dir/t3code-ostree-${arch}.tar.gz"
+          ref_file="$artifact_dir/t3code-ref-${arch}.txt"
+          expected_ref="app/${APP_ID}/${arch}/master"
+
+          test -s "$archive"
+          test -s "$ref_file"
+          test "$(<"$ref_file")" = "$expected_ref"
+
+          extract_dir="$RUNNER_TEMP/t3code-${arch}"
+          mkdir -p "$extract_dir"
+          tar -xzf "$archive" -C "$extract_dir"
+          source_repo="$extract_dir/repo-${arch}"
+          test -f "$source_repo/config"
+          ostree fsck --repo="$source_repo" --all
+          ostree rev-parse --repo="$source_repo" "$expected_ref" >/dev/null
+
+          # Pull only the exact app ref. Runtime and appstream refs from the
+          # unsigned source repository are intentionally not published.
+          ostree pull-local \
             --repo=site/repo \
-            --collection-id="$COLLECTION_ID" \
+            --untrusted \
+            --depth=-1 \
+            "$source_repo" \
+            "$expected_ref"
+
+          flatpak build-sign \
             --gpg-sign="$FLATPAK_GPG_KEY_ID" \
-            builddir \
-            com.t3tools.t3code.yml
+            --gpg-homedir="$GNUPGHOME" \
+            --arch="$arch" \
+            site/repo \
+            "$APP_ID" \
+            master
+
+          commit="$(ostree rev-parse --repo=site/repo "$expected_ref")"
+          ostree show --repo=site/repo --list-detached-metadata-keys "$commit" \
+            | grep -qx 'ostree.gpgsigs'
 
           flatpak build-update-repo \
             --gpg-sign="$FLATPAK_GPG_KEY_ID" \
+            --gpg-homedir="$GNUPGHOME" \
             --generate-static-deltas \
-            --prune \
             --collection-id="$COLLECTION_ID" \
             --deploy-sideload-collection-id \
-            --title="T3 Code" \
+            --title="T3 Code Flatpak" \
             --comment="Unofficial Flatpak repository for T3 Code" \
             --description="T3 Code packaged as a Flatpak from the upstream AppImage." \
             --homepage="https://github.com/$GITHUB_REPOSITORY" \
+            --default-branch=master \
             site/repo
 
-      - name: Generate Pages site
+          ostree fsck --repo=site/repo --all
+
+      - name: Generate Pages metadata and index
         env:
           FLATPAK_REPO_URL: ${{ vars.FLATPAK_REPO_URL }}
         shell: bash
         run: |
           set -euo pipefail
 
-          site_dir="site"
-          repo_name="${GITHUB_REPOSITORY#*/}"
           pages_url="${FLATPAK_REPO_URL:-}"
-
           if [ -z "$pages_url" ]; then
+            repo_name="${GITHUB_REPOSITORY#*/}"
             if [ "$repo_name" = "${GITHUB_REPOSITORY_OWNER}.github.io" ]; then
               pages_url="https://${GITHUB_REPOSITORY_OWNER}.github.io"
             else
               pages_url="https://${GITHUB_REPOSITORY_OWNER}.github.io/${repo_name}"
             fi
           fi
-
           pages_url="${pages_url%/}"
-          gpg_key="$(cat "$RUNNER_TEMP/t3code-flatpak.gpg.b64")"
+          case "$pages_url" in
+            https://*) ;;
+            *)
+              echo "FLATPAK_REPO_URL must be an HTTPS site root." >&2
+              exit 1
+              ;;
+          esac
+
+          gpg_key="$(<"$RUNNER_TEMP/t3code-flatpak.gpg.b64")"
           escaped_pages_url="$(printf '%s' "$pages_url" | sed 's/[&|\\]/\\&/g')"
           escaped_repository="$(printf '%s' "$GITHUB_REPOSITORY" | sed 's/[&|\\]/\\&/g')"
           escaped_gpg_key="$(printf '%s' "$gpg_key" | sed 's/[&|\\]/\\&/g')"
@@ -137,13 +278,13 @@ jobs:
             -e "s|@FLATPAK_REPO_URL@|$escaped_pages_url|g" \
             -e "s|@GITHUB_REPOSITORY@|$escaped_repository|g" \
             -e "s|@GPG_KEY@|$escaped_gpg_key|g" \
-            t3code.flatpakrepo.in > "$site_dir/t3code.flatpakrepo"
+            t3code.flatpakrepo.in > site/t3code.flatpakrepo
 
           sed \
             -e "s|@FLATPAK_REPO_URL@|$escaped_pages_url|g" \
             -e "s|@GITHUB_REPOSITORY@|$escaped_repository|g" \
             -e "s|@GPG_KEY@|$escaped_gpg_key|g" \
-            t3code.flatpakref.in > "$site_dir/t3code.flatpakref"
+            t3code.flatpakref.in > site/t3code.flatpakref
 
           {
             printf '%s\n' '<!doctype html>'
@@ -151,20 +292,21 @@ jobs:
             printf '%s\n' '<head>'
             printf '%s\n' '  <meta charset="utf-8">'
             printf '%s\n' '  <meta name="viewport" content="width=device-width, initial-scale=1">'
-            printf '%s\n' '  <title>T3 Code Flatpak Repo</title>'
+            printf '%s\n' '  <title>T3 Code Flatpak Repository</title>'
             printf '%s\n' '</head>'
             printf '%s\n' '<body>'
-            printf '%s\n' '  <h1>T3 Code Flatpak Repo</h1>'
+            printf '%s\n' '  <h1>T3 Code Flatpak Repository</h1>'
             printf '%s\n' '  <p><a href="t3code.flatpakrepo">Add the T3 Code Flatpak remote</a></p>'
             printf '%s\n' '  <p><a href="t3code.flatpakref">Install T3 Code from this remote</a></p>'
-            printf '%s\n' '  <pre>flatpak remote-add --user --if-not-exists t3code '"${pages_url}"'/t3code.flatpakrepo'
+            printf '%s\n' '  <pre>flatpak remote-add --user --if-not-exists t3code '
+            printf '%s/t3code.flatpakrepo\n' "$pages_url"
             printf '%s\n' 'flatpak install --user t3code com.t3tools.t3code'
             printf '%s\n' 'flatpak update --user com.t3tools.t3code</pre>'
             printf '%s\n' '</body>'
             printf '%s\n' '</html>'
-          } > "$site_dir/index.html"
+          } > site/index.html
 
-      - name: Verify Pages payload
+      - name: Validate Pages payload and exact application ref
         shell: bash
         run: |
           set -euo pipefail
@@ -173,6 +315,11 @@ jobs:
           test -s site/repo/summary.sig
           test -s site/t3code.flatpakrepo
           test -s site/t3code.flatpakref
+          test -s site/index.html
+
+          expected_ref="app/${APP_ID}/x86_64/master"
+          ostree rev-parse --repo=site/repo "$expected_ref" >/dev/null
+          grep -Fq "$expected_ref" <(ostree refs --repo=site/repo --list)
 
           if find site -type l -print -quit | grep -q .; then
             echo "GitHub Pages artifacts must not contain symlinks." >&2
@@ -180,12 +327,28 @@ jobs:
           fi
 
           grep -Eq '^Url=https://[^[:space:]]+/repo/$' site/t3code.flatpakrepo
+          grep -Eq '^Homepage=https://github\.com/[^[:space:]]+$' site/t3code.flatpakrepo
+          grep -Eq '^DefaultBranch=master$' site/t3code.flatpakrepo
+          grep -Eq '^DeploySideloadCollectionID=com\.t3tools\.t3code\.Repository$' site/t3code.flatpakrepo
           grep -Eq '^GPGKey=[A-Za-z0-9+/=]+$' site/t3code.flatpakrepo
           grep -Eq '^Name=com\.t3tools\.t3code$' site/t3code.flatpakref
+          grep -Eq '^Branch=master$' site/t3code.flatpakref
+          grep -Eq '^Url=https://[^[:space:]]+/repo/$' site/t3code.flatpakref
+          grep -Eq '^Homepage=https://github\.com/[^[:space:]]+$' site/t3code.flatpakref
           grep -Eq '^RuntimeRepo=https://flathub\.org/repo/flathub\.flatpakrepo$' site/t3code.flatpakref
+          grep -Eq '^IsRuntime=false$' site/t3code.flatpakref
+          grep -Eq '^GPGKey=[A-Za-z0-9+/=]+$' site/t3code.flatpakref
+          ! grep -Eq '@[A-Z_]+@' site/t3code.flatpakrepo site/t3code.flatpakref
+          grep -Fq 't3code.flatpakrepo' site/index.html
+          grep -Fq 't3code.flatpakref' site/index.html
+          grep -Fq 'flatpak install --user t3code com.t3tools.t3code' site/index.html
+          grep -Fq 'flatpak update --user com.t3tools.t3code' site/index.html
 
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
+      - name: Save final repository history
+        uses: actions/cache/save@v4
+        with:
+          path: site/repo
+          key: ${{ steps.repo-cache.outputs.cache-primary-key }}
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v4
@@ -194,7 +357,7 @@ jobs:
 
   deploy:
     name: Deploy to GitHub Pages
-    needs: build
+    needs: aggregate
     runs-on: ubuntu-24.04
     permissions:
       contents: read
