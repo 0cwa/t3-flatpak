@@ -94,9 +94,9 @@ modules:
         path: com.t3tools.t3code.metainfo.xml
 
       - type: file
-        url: https://github.com/pingdotgg/t3code/releases/download/v0.0.38/T3-Code-0.0.38-x86_64.AppImage
+        url: https://github.com/pingdotgg/t3code/releases/download/v0.0.39/T3-Code-0.0.39-x86_64.AppImage
         dest-filename: T3-Code.AppImage
-        sha256: 1f1ccd922b2efaffd50447b028ee0d6e2525502905087cf8ae3fe41efebe346f
+        sha256: 4f78c9939c0386f9be5a2d8e9baf9644af497344015817a36fea8be84981bda8
         only-arches: [x86_64]
         x-checker-data:
           type: electron-updater
