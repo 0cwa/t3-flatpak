@@ -11,6 +11,14 @@ jobs:
     name: Flatpak x86_64
     runs-on: tumbleweed
     steps:
+      - name: Prepare build environment
+        run: |
+          zypper --non-interactive refresh
+          zypper --non-interactive install --no-recommends -y \
+            nodejs git flatpak flatpak-builder
+          flatpak remote-add --if-not-exists flathub \
+            https://dl.flathub.org/repo/flathub.flatpakrepo
+
       - uses: https://code.forgejo.org/actions/checkout@v6
 
       - name: Build repository
