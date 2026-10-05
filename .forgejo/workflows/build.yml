@@ -3,7 +3,7 @@ name: CI Build Flatpak
 on:
   push:
     branches: [main]
-  pull_request:
+  pull_request: {}
   workflow_dispatch:
 
 jobs:
@@ -28,3 +28,16 @@ jobs:
             t3code.flatpak \
             com.t3tools.t3code \
             --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: Create checksum
+        run: sha256sum t3code.flatpak > t3code.flatpak.sha256
+
+      - name: Upload Flatpak and checksum
+        uses: https://data.forgejo.org/forgejo/upload-artifact@v4
+        with:
+          name: t3code-flatpak
+          path: |
+            t3code.flatpak
+            t3code.flatpak.sha256
+          if-no-files-found: error
+          compression-level: 0
