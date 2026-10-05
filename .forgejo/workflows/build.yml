@@ -10,6 +10,8 @@ jobs:
   flatpak:
     name: Flatpak x86_64
     runs-on: tumbleweed
+    container:
+      options: --privileged
     steps:
       - name: Prepare build environment
         run: |
