@@ -9,7 +9,7 @@ on:
 jobs:
   flatpak:
     name: Flatpak x86_64
-    runs-on: flatpak-x86_64
+    runs-on: tumbleweed
     steps:
       - uses: https://code.forgejo.org/actions/checkout@v6
 
