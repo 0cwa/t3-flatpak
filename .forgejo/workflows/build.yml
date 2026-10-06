@@ -17,9 +17,11 @@ jobs:
         run: |
           zypper --non-interactive refresh
           zypper --non-interactive install --no-recommends -y \
-            nodejs git flatpak flatpak-builder
+            nodejs git flatpak flatpak-builder \
+            gdk-pixbuf-query-loaders
           flatpak remote-add --if-not-exists flathub \
             https://dl.flathub.org/repo/flathub.flatpakrepo
+          gdk-pixbuf-query-loaders-64 --update-cache
 
       - uses: https://code.forgejo.org/actions/checkout@v6
 
