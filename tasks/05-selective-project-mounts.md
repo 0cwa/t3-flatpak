@@ -43,8 +43,8 @@ Documentation requirements:
 
 - Explain where app-private data lives: `~/.var/app/com.t3tools.t3code`.
 - Explain that provider CLIs installed inside the sandbox can only see mounted paths.
-- Explain that SSH auth is not available by default.
-- If SSH remotes are needed later, document it as a separate tradeoff rather than enabling it by default.
+- Explain that host SSH keys/config and GPG data are mounted read-only, while the SSH agent socket is not available by default.
+- The host's `~/.local/bin` is mounted read-only and included in the sandbox `PATH` for user-installed tools.
 - Explain that mounting a project is persistent until revoked.
 - Explain that `--filesystem=home` and `--filesystem=host` are intentionally not recommended.
 - Explain that mounted project paths are exposed to all tools T3 Code runs inside the sandbox, including terminals and provider CLIs.
