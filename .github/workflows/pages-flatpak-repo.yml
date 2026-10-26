@@ -162,9 +162,8 @@ jobs:
       - name: Download unsigned architecture repository
         uses: actions/download-artifact@v8
         with:
-          pattern: t3code-ostree-*
-          path: inputs
-          merge-multiple: false
+          name: t3code-ostree-x86_64
+          path: inputs/t3code-ostree-x86_64
 
       - name: Restore previous final repository
         id: repo-cache
