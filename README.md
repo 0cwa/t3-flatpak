@@ -63,10 +63,32 @@ For persistent access to one project directory, add a narrow user override:
 flatpak override --user --filesystem=/path/to/project:rw com.t3tools.t3code
 ```
 
+If a project is a symlink whose destination lies outside the granted directory,
+grant access to the resolved destination as well. Access to the directory
+containing a symlink does not expose an otherwise inaccessible target:
+
+```bash
+realpath "$HOME/projects/example"
+flatpak override --user --filesystem="$(realpath "$HOME/projects/example"):rw" com.t3tools.t3code
+```
+
+Here, `$HOME/projects/example` is the symlink. Keep access to its containing
+directory if you want to open the project through that link. The additional
+grant covers the resolved destination at the time of the command. If the link
+is changed to point elsewhere, review and grant its new destination separately.
+Do not grant `home` or `host` just to expose arbitrary symlink targets.
+
 To revoke that project later:
 
 ```bash
 flatpak override --user --nofilesystem=/path/to/project com.t3tools.t3code
+```
+
+For a symlink target grant, revoke the actual destination path that was granted,
+even if the link has since changed or been removed:
+
+```bash
+flatpak override --user --nofilesystem=/actual/path/to/project com.t3tools.t3code
 ```
 
 Inspect active permissions with:
