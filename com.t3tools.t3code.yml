@@ -26,8 +26,12 @@ finish-args:
   - --share=ipc
   - --share=network
   - --env=GTK_USE_PORTAL=1
-  - --env=T3CODE_DESKTOP_PROTOCOL_REGISTRATION_MANAGED=1
   - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons # This is used to show the correct cursor on Wayland
+  # Without home access, $HOME inside the sandbox is a tmpfs that is discarded
+  # on exit. Map app state dirs that ignore XDG onto persistent app storage.
+  - --persist=.t3 # T3 Code settings, state DB, auth tokens, secrets, worktrees
+  - --persist=.codex # Codex CLI
+  - --persist=.claude # Claude Code (startt3code points CLAUDE_CONFIG_DIR here)
 
 modules:
   - name: nodejs
@@ -66,6 +70,37 @@ modules:
         url: https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz
         sha256: dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3
 
+  - name: gh
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 bin/gh /app/bin/gh
+    sources:
+      - type: archive
+        url: https://github.com/cli/cli/releases/download/v2.102.0/gh_2.102.0_linux_amd64.tar.gz
+        sha256: bb766f710eef8ede859c18578c72c327597cd4c8a85b06001b1f3843c6019386
+        only-arches: [x86_64]
+
+  - name: glab
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 "$(find . -type f -name glab -print -quit)" /app/bin/glab
+    sources:
+      - type: archive
+        url: https://gitlab.com/gitlab-org/cli/-/releases/v1.120.0/downloads/glab_1.120.0_linux_amd64.tar.gz
+        sha256: 4e6c59de9f7ed2f304bf93aad01ea8f8a69584f0450ce90ad696ef81f69c69aa
+        only-arches: [x86_64]
+
+  - name: tea
+    buildsystem: simple
+    build-commands:
+      - install -Dm755 tea-0.16.0-linux-amd64 /app/bin/tea
+    sources:
+      - type: file
+        url: https://gitea.com/gitea/tea/releases/download/v0.16.0/tea-0.16.0-linux-amd64
+        dest-filename: tea-0.16.0-linux-amd64
+        sha256: 9c142c8a0b31485eea2387031c1c404f12b7141075eb4ffbd7ced49441590636
+        only-arches: [x86_64]
+
   - name: openssh
     buildsystem: simple
     build-commands:
@@ -90,8 +125,37 @@ modules:
           echo "Unexpected Electron updater metadata remains in extracted AppImage." >&2
           exit 1
         fi
+      # Upstream calls app.setDesktopName("com.t3tools.T3Code.desktop"), which
+      # Electron also uses as the Wayland app_id. Flatpak can only export
+      # com.t3tools.t3code.desktop, so compositors cannot match the window to the
+      # installed desktop entry. Rewrite the name in place: both strings have the
+      # same length, so asar header offsets stay valid. Refuse to patch if the
+      # string moved or if Electron's embedded asar integrity fuse is enabled.
+      - |
+        asar=squashfs-root/resources/app.asar
+        old='com.t3tools.T3Code.desktop'
+        new='com.t3tools.t3code.desktop'
+        sentinel='dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX'
+        fuse_offset=$(grep -aobF "$sentinel" squashfs-root/t3code | head -n 1 | cut -d: -f1)
+        if [ -z "$fuse_offset" ]; then
+          echo "Electron fuse sentinel not found in t3code binary." >&2
+          exit 1
+        fi
+        integrity_fuse=$(dd if=squashfs-root/t3code bs=1 skip=$((fuse_offset + ${#sentinel} + 2 + 4)) count=1 status=none)
+        if [ "$integrity_fuse" = 1 ]; then
+          echo "EnableEmbeddedAsarIntegrityValidation is on; cannot patch app.asar." >&2
+          exit 1
+        fi
+        if [ "$(grep -aoF "$old" "$asar" | wc -l)" -ne 1 ]; then
+          echo "Expected exactly one '$old' in app.asar." >&2
+          exit 1
+        fi
+        sed -i "s/com\.t3tools\.T3Code\.desktop/$new/g" "$asar"
+        test "$(grep -aoF "$old" "$asar" | wc -l)" -eq 0
+        test "$(grep -aoF "$new" "$asar" | wc -l)" -eq 1
       - desktop-file-edit --set-key="Exec" --set-value="startt3code %U" --set-icon=$FLATPAK_ID
         --add-mime-type=x-scheme-handler/t3code
+        --remove-mime-type=x-scheme-handler/t3code-dev
         squashfs-root/t3code.desktop
       - |
         for icon in 16 22 24 32 48 64 128 256 512; do

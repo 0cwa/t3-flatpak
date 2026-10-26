@@ -3,16 +3,35 @@
 export TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID:-com.t3tools.t3code}"
 export NPM_CONFIG_PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/npm-global"
 export NPM_CONFIG_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/npm"
-# Flatpak mounts optional tool extensions but does not add their commands to
-# PATH. Keep npm and bundled commands ahead of extension commands.
+# Keep managed tools ahead of optional extension and host commands.
 tools_path=""
 for tool_bin in /app/tools/*/bin; do
     [[ -d "$tool_bin" ]] && tools_path+=":$tool_bin"
 done
-export PATH="$NPM_CONFIG_PREFIX/bin:/app/bin$tools_path:$PATH"
+export PATH="$NPM_CONFIG_PREFIX/bin:/app/bin$tools_path:$HOME/.local/bin:$PATH"
 unset tools_path tool_bin
 
 mkdir -p "$NPM_CONFIG_PREFIX" "$NPM_CONFIG_CACHE"
+
+# Anything written to $HOME outside ~/.var/app/$FLATPAK_ID and the --persist
+# dirs in the manifest is lost when the sandbox exits. Steer remaining
+# home-relative state into persistent locations. Host access is opt-in.
+
+# Claude Code keeps ~/.claude.json next to (not inside) ~/.claude unless
+# CLAUDE_CONFIG_DIR is set. Point it at the persisted ~/.claude so the file
+# lands there too.
+export CLAUDE_CONFIG_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+
+# `git config --global` writes to $XDG_CONFIG_HOME/git/config instead of
+# ~/.gitconfig when the former exists and the latter does not.
+git_xdg_config="${XDG_CONFIG_HOME:-$HOME/.config}/git/config"
+mkdir -p "$(dirname -- "$git_xdg_config")"
+[[ -e "$git_xdg_config" ]] || : > "$git_xdg_config"
+
+# Shell history for T3 Code terminals.
+export XDG_STATE_HOME="${XDG_STATE_HOME:-${XDG_DATA_HOME:-$HOME/.local/share}/state}"
+export HISTFILE="${HISTFILE:-$XDG_STATE_HOME/bash/history}"
+mkdir -p "$(dirname -- "$HISTFILE")"
 
 declare -a FLAGS=()
 

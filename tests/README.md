@@ -1,4 +1,11 @@
-# Tool extension integration check
+# Launcher and tool extension checks
+
+Run `bash tests/check-launcher.sh` for an isolated launcher check without
+Flatpak or Electron. It checks managed-tool precedence, persistent state
+paths, and preservation of existing Git configuration. CI runs this check
+before building the application.
+
+## Tool extension integration check
 
 Run these commands on a host with Flatpak and flatpak-builder, from the
 repository root. Use a disposable installation so the running T3 Code app is
