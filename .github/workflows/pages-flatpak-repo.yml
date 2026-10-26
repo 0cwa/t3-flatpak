@@ -22,7 +22,7 @@ jobs:
     name: Build unsigned OSTree repo (${{ matrix.variant.arch }})
     if: ${{ github.ref == 'refs/heads/main' && (vars.PUBLISH_FLATPAK_REPO == 'true' || github.event_name == 'workflow_dispatch') }}
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
       options: --privileged
     strategy:
       fail-fast: false
@@ -116,7 +116,7 @@ jobs:
     needs: build
     runs-on: ubuntu-24.04
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
       options: --privileged
     steps:
       - name: Check out triggering commit

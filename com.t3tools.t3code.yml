@@ -1,7 +1,7 @@
 app-id: com.t3tools.t3code
 
 runtime: org.freedesktop.Platform
-runtime-version: &runtime-version '24.08'
+runtime-version: &runtime-version '26.08'
 sdk: org.freedesktop.Sdk
 
 base: org.electronjs.Electron2.BaseApp
@@ -10,6 +10,15 @@ base-version: *runtime-version
 command: startt3code
 branch: master
 separate-locales: false
+
+add-extensions:
+  com.t3tools.t3code.Tools:
+    directory: tools
+    version: *runtime-version
+    subdirectories: true
+    no-autodownload: true
+    autodelete: true
+    add-ld-path: lib
 
 finish-args:
   - --socket=wayland
@@ -46,6 +55,17 @@ modules:
         url: https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.56.0.tar.xz
         sha256: 26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3
 
+  - name: make
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=/app
+      - make
+      - make install
+    sources:
+      - type: archive
+        url: https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz
+        sha256: dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3
+
   - name: openssh
     buildsystem: simple
     build-commands:
@@ -80,6 +100,7 @@ modules:
         done
       - install -D squashfs-root/t3code.desktop /app/share/applications/com.t3tools.t3code.desktop
       - install -Dm755 startt3code /app/bin/startt3code
+      - install -d /app/tools
       - install -Dm755 t3code-install-provider /app/bin/t3code-install-provider
       - install -D com.t3tools.t3code.metainfo.xml -t /app/share/metainfo/
       - mv squashfs-root /app/bin/t3code

@@ -1,0 +1,22 @@
+id: com.t3tools.t3code.Tools.Test
+branch: '26.08'
+runtime: com.t3tools.t3code
+runtime-version: master
+sdk: org.freedesktop.Sdk//26.08
+build-extension: true
+separate-locales: false
+appstream-compose: false
+build-options:
+  prefix: /app/tools/Test
+modules:
+  - name: t3-tool-test
+    buildsystem: simple
+    build-commands:
+      - install -d ${FLATPAK_DEST}/bin ${FLATPAK_DEST}/lib
+      - cc -shared -fPIC -o ${FLATPAK_DEST}/lib/libt3tooltest.so lib.c
+      - cc -o ${FLATPAK_DEST}/bin/t3-tool-test main.c -L${FLATPAK_DEST}/lib -lt3tooltest
+    sources:
+      - type: file
+        path: lib.c
+      - type: file
+        path: main.c
