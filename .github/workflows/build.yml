@@ -26,3 +26,16 @@ jobs:
           cache-key: flatpak-builder-${{ github.sha }}
           arch: ${{ matrix.variant.arch }}
           verbose: true
+
+      - name: Create checksum
+        run: sha256sum t3code.flatpak > t3code.flatpak.sha256
+
+      - name: Upload Flatpak and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: t3code-flatpak
+          path: |
+            t3code.flatpak
+            t3code.flatpak.sha256
+          if-no-files-found: error
+          compression-level: 0
