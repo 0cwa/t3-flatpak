@@ -33,6 +33,40 @@ PATH=$NPM_CONFIG_PREFIX/bin:/app/bin:$PATH
 
 When installed normally, those resolve under `~/.var/app/com.t3tools.t3code/data/npm-global` and `~/.var/app/com.t3tools.t3code/cache/npm`.
 
+## Optional tool extensions
+
+Separately maintained tool sets can use the `com.t3tools.t3code.Tools`
+extension point. Extensions are installed explicitly; installing or updating
+T3 Code does not automatically download them.
+
+For a separately maintained toolset, configure its remote and install its
+matching branch. Replace the example remote and extension name below with
+those supplied by its maintainer:
+
+```bash
+flatpak install --user <remote> com.t3tools.t3code.Tools.Example//24.08
+```
+
+The extension branch must match T3 Code's Freedesktop runtime version, currently
+`24.08`. A runtime upgrade requires a matching extension build. Restart T3 Code
+after installing, updating, or removing an extension.
+
+Extensions mount at `/app/tools/<Name>`. The launcher adds their existing `bin`
+directories to `PATH` in glob order, after npm globals and `/app/bin`,
+but before the inherited runtime paths. Flatpak registers each extension's
+`lib` directory with the dynamic loader. Tool-specific configuration belongs
+in the extension. Extension loading adds no sandbox permissions, but extension
+commands run with the application's existing access to app data, network, and
+mounted projects. Only install extensions from maintainers you trust.
+
+For a [local integration check](tests/README.md), build and install the app into an isolated
+Flatpak installation, then build and install
+`tests/extension-fixture/com.t3tools.t3code.Tools.Test.yml` into the same
+installation. Run `tests/check-tool-extension.sh installed` in the app sandbox
+with the test directory mounted read-only. After uninstalling the fixture,
+run it with `absent`. The fixture command depends on an extension library and
+has no rpath, so it checks library loading as well as command discovery.
+
 ## Provider CLIs
 
 Install supported provider CLIs from inside the Flatpak sandbox:

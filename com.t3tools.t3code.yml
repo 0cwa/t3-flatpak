@@ -11,6 +11,15 @@ command: startt3code
 branch: master
 separate-locales: false
 
+add-extensions:
+  com.t3tools.t3code.Tools:
+    directory: tools
+    version: *runtime-version
+    subdirectories: true
+    no-autodownload: true
+    autodelete: true
+    add-ld-path: lib
+
 finish-args:
   - --socket=wayland
   - --socket=fallback-x11
@@ -80,6 +89,7 @@ modules:
         done
       - install -D squashfs-root/t3code.desktop /app/share/applications/com.t3tools.t3code.desktop
       - install -Dm755 startt3code /app/bin/startt3code
+      - install -d /app/tools
       - install -Dm755 t3code-install-provider /app/bin/t3code-install-provider
       - install -D com.t3tools.t3code.metainfo.xml -t /app/share/metainfo/
       - mv squashfs-root /app/bin/t3code
