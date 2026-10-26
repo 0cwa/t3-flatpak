@@ -39,8 +39,8 @@ modules:
   - name: git
     buildsystem: simple
     build-commands:
-      - make prefix=/app NO_GETTEXT=YesPlease NO_TCLTK=YesPlease NO_PERL=YesPlease all
-      - make prefix=/app NO_GETTEXT=YesPlease NO_TCLTK=YesPlease NO_PERL=YesPlease install
+      - make prefix=/app NO_GETTEXT=YesPlease NO_TCLTK=YesPlease NO_PERL=YesPlease NO_RUST=YesPlease all
+      - make prefix=/app NO_GETTEXT=YesPlease NO_TCLTK=YesPlease NO_PERL=YesPlease NO_RUST=YesPlease install
     sources:
       - type: archive
         url: https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.54.0.tar.xz
