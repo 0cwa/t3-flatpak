@@ -146,10 +146,13 @@ Before the first publish:
    key securely; users trust its public key from the generated descriptors.
 2. Add `FLATPAK_GPG_PRIVATE_KEY` as an ASCII-armored GitHub Actions secret.
 3. Add `FLATPAK_GPG_KEY_ID` as the signing key ID or fingerprint secret.
-4. Add `GH_TOKEN` as a token authorized to push commits and tags. The updater
-   uses it because pushes made with the default `github.token` do not trigger
-   downstream CI, release, and Pages workflows. The updater fails before
-   changing anything when this secret is absent.
+4. The AppImage updater uses the default `github.token` to push commits and
+   tags, then explicitly dispatches downstream CI, release, and Pages workflows.
+   Optionally add `GH_TOKEN` as a token authorized to push commits and tags;
+   its pushes trigger downstream workflows automatically instead. Allow GitHub
+   Actions to create pull requests for the bundled-runtime updater.
+   Set the repository's default branch to `main` so scheduled workflows use
+   the same maintained branch as builds and publishing.
 5. Set the public repository variable `PUBLISH_FLATPAK_REPO` to `true` after
    the signing secrets are ready. Automatic publication is restricted to
    `refs/heads/main`; manual dispatch is also restricted to that ref.

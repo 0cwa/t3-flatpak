@@ -15,6 +15,10 @@ permissions:
   contents: write
   pull-requests: write
 
+concurrency:
+  group: update-bundled-runtime-pins
+  cancel-in-progress: false
+
 jobs:
   update:
     name: Check bundled runtime pins
@@ -59,6 +63,11 @@ jobs:
 
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Refresh the remote-tracking ref before a leased update of an
+          # existing automation branch.
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            git fetch origin "refs/heads/$branch:refs/remotes/origin/$branch"
+          fi
           git switch -c "$branch"
           git add com.t3tools.t3code.yml
           git commit -m "chore: update bundled runtime pins"
