@@ -46,6 +46,17 @@ modules:
         url: https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.54.0.tar.xz
         sha256: f689162364c10de79ef89aa8dbf48731eb057e34edbbd20aca510ce0154681a3
 
+  - name: make
+    buildsystem: simple
+    build-commands:
+      - ./configure --prefix=/app
+      - make
+      - make install
+    sources:
+      - type: archive
+        url: https://ftp.gnu.org/gnu/make/make-4.4.1.tar.gz
+        sha256: dd16fb1d67bfab79a72f5e8390735c49e3e8e70b4945a15ab1f81ddb78658fb3
+
   - name: openssh
     buildsystem: simple
     build-commands:
