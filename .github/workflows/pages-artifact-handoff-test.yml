@@ -1,0 +1,74 @@
+name: Validate Pages artifact handoff (unsigned)
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/pages-flatpak-repo.yml
+      - .github/workflows/pages-artifact-handoff-test.yml
+      - scripts/check-pages-artifact-contract.py
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/pages-flatpak-repo.yml
+      - .github/workflows/pages-artifact-handoff-test.yml
+      - scripts/check-pages-artifact-contract.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  artifact-handoff:
+    name: Round-trip unsigned x86_64 artifact
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Check production artifact contract
+        run: python3 scripts/check-pages-artifact-contract.py
+
+      - name: Create unsigned fixture (no Flatpak build or signing)
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p repo-x86_64
+          printf '[core]\nmode=archive-z2\n' > repo-x86_64/config
+          tar -czf t3code-ostree-x86_64.tar.gz repo-x86_64
+          printf '%s\n' 'app/com.t3tools.t3code/x86_64/master' > t3code-ref-x86_64.txt
+
+      - name: Upload fixture with production artifact identity
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-ostree-x86_64
+          path: |
+            t3code-ostree-x86_64.tar.gz
+            t3code-ref-x86_64.txt
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
+
+      - name: Download fixture with production destination
+        uses: actions/download-artifact@v8
+        with:
+          name: t3code-ostree-x86_64
+          path: inputs/t3code-ostree-x86_64
+
+      - name: Assert signing job's expected artifact layout
+        shell: bash
+        run: |
+          set -euo pipefail
+          arch=x86_64
+          artifact_dir="inputs/t3code-ostree-${arch}"
+          archive="$artifact_dir/t3code-ostree-${arch}.tar.gz"
+          ref_file="$artifact_dir/t3code-ref-${arch}.txt"
+          expected_ref="app/com.t3tools.t3code/${arch}/master"
+
+          test -s "$archive"
+          test -s "$ref_file"
+          test "$(<"$ref_file")" = "$expected_ref"
+          test ! -e "inputs/t3code-ostree-${arch}.tar.gz"
+          test ! -e "inputs/t3code-ref-${arch}.txt"
+
+          mkdir -p extracted
+          tar -xzf "$archive" -C extracted
+          test -f "extracted/repo-${arch}/config"
