@@ -1,0 +1,15 @@
+name: Flatpak permission regression
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+jobs:
+  source-security:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+      - name: Check default permissions and launcher
+        run: python3 scripts/check-flatpak-security.py
+      - name: Check launcher syntax
+        run: bash -n startt3code
