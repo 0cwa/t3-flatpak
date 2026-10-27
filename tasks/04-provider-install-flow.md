@@ -76,7 +76,7 @@ Acceptance criteria:
 
 - Codex, Claude, and OpenCode can be installed into the sandbox app data.
 - T3 Code provider detection can find installed provider binaries through `PATH`.
-- No broad host filesystem grants are added; the manifest permits read-only access to the specific host `~/.ssh`, `~/.gnupg`, and `~/.local/bin` directories.
+- No host credential or tool filesystem grants are added. Optional SSH-agent access is inherited by every installed provider and must be documented as an authentication capability.
 - No host command bridge is added.
 - Missing Grok and Cursor support is intentionally documented.
 - Provider install/update commands fail closed for unknown provider names.

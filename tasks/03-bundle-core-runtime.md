@@ -36,8 +36,8 @@ Security model:
 - Do not mount the host home to make npm, git, or ssh work.
 - Do not use `flatpak-spawn`.
 - Do not add `--socket=ssh-auth` in this phase.
-- Do not rely on T3 Code's login-shell PATH probing to discover host tools. The launcher explicitly adds `/app/bin`, app-owned npm globals, and the read-only host `~/.local/bin` to `PATH`.
-- SSH keys and config are read from the host's `~/.ssh`, mounted read-only as a deliberate narrow tradeoff; the SSH client remains bundled and runs inside the sandbox.
+- Do not rely on T3 Code's login-shell PATH probing to discover host tools. The launcher adds app-owned npm globals and `/app/bin`, without a host tool PATH entry.
+- Host SSH keys are not exposed. SSH config and known hosts live in app-private persistent `.ssh`. Optional `--socket=ssh-auth` access lets the bundled SSH client authenticate through a host agent without reading private-key files.
 
 Implementation options:
 

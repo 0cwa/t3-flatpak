@@ -16,18 +16,15 @@ finish-args:
   - --socket=fallback-x11
   - --share=ipc
   - --share=network
-  - --talk-name=org.freedesktop.Flatpak
   - --env=GTK_USE_PORTAL=1
   - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons # This is used to show the correct cursor on Wayland
   # Without home access, $HOME inside the sandbox is a tmpfs that is discarded
-  # on exit. Map app state dirs that ignore XDG onto persistent app storage;
-  # expose only selected host tool/key directories, and only read-only.
+  # on exit. Map app state dirs that ignore XDG onto persistent app storage.
+  # SSH configuration and known_hosts are app-private, not host mounts.
   - --persist=.t3 # T3 Code settings, state DB, auth tokens, secrets, worktrees
   - --persist=.codex # Codex CLI
   - --persist=.claude # Claude Code (startt3code points CLAUDE_CONFIG_DIR here)
-  - --filesystem=~/.ssh:ro
-  - --filesystem=~/.gnupg:ro
-  - --filesystem=~/.local/bin:ro
+  - --persist=.ssh # sandbox-local SSH configuration and verified host keys
 
 modules:
   - name: nodejs
@@ -121,7 +118,7 @@ modules:
         old='com.t3tools.T3Code.desktop'
         new='com.t3tools.t3code.desktop'
         sentinel='dL7pKGdnNz796PbbjQWNKmHXBZaB9tsX'
-        fuse_offset=$(grep -aobF "$sentinel" squashfs-root/t3code | head -n1 | cut -d: -f1)
+        fuse_offset=$(grep -aobF "$sentinel" squashfs-root/t3code | head -n 1 | cut -d: -f1)
         if [ -z "$fuse_offset" ]; then
           echo "Electron fuse sentinel not found in t3code binary." >&2
           exit 1

@@ -26,3 +26,9 @@ jobs:
           cache-key: flatpak-builder-${{ github.sha }}
           arch: ${{ matrix.variant.arch }}
           verbose: true
+
+      - name: Check installed SSH boundaries with a disposable key and agent
+        shell: bash
+        env:
+          T3_DISPOSABLE_ACCOUNT: '1'
+        run: bash tests/check-ssh-boundary.sh t3code.flatpak
