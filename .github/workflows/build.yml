@@ -42,3 +42,9 @@ jobs:
           if-no-files-found: error
           compression-level: 0
           retention-days: 3
+
+      - name: Check installed SSH boundaries with a disposable key and agent
+        shell: bash
+        env:
+          T3_DISPOSABLE_ACCOUNT: '1'
+        run: bash tests/check-ssh-boundary.sh t3code.flatpak

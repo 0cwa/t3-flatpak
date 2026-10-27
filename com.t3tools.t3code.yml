@@ -29,9 +29,11 @@ finish-args:
   - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons # This is used to show the correct cursor on Wayland
   # Without home access, $HOME inside the sandbox is a tmpfs that is discarded
   # on exit. Map app state dirs that ignore XDG onto persistent app storage.
+  # SSH configuration and known_hosts are app-private, not host mounts.
   - --persist=.t3 # T3 Code settings, state DB, auth tokens, secrets, worktrees
   - --persist=.codex # Codex CLI
   - --persist=.claude # Claude Code (startt3code points CLAUDE_CONFIG_DIR here)
+  - --persist=.ssh # sandbox-local SSH configuration and verified host keys
 
 modules:
   - name: nodejs

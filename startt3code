@@ -3,19 +3,20 @@
 export TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID:-com.t3tools.t3code}"
 export NPM_CONFIG_PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/npm-global"
 export NPM_CONFIG_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/npm"
-# Keep managed tools ahead of optional extension and host commands.
+# Keep managed tools ahead of optional extension commands.
 tools_path=""
 for tool_bin in /app/tools/*/bin; do
     [[ -d "$tool_bin" ]] && tools_path+=":$tool_bin"
 done
-export PATH="$NPM_CONFIG_PREFIX/bin:/app/bin$tools_path:$HOME/.local/bin:$PATH"
+export PATH="$NPM_CONFIG_PREFIX/bin:/app/bin$tools_path:$PATH"
 unset tools_path tool_bin
 
 mkdir -p "$NPM_CONFIG_PREFIX" "$NPM_CONFIG_CACHE"
 
 # Anything written to $HOME outside ~/.var/app/$FLATPAK_ID and the --persist
 # dirs in the manifest is lost when the sandbox exits. Steer remaining
-# home-relative state into persistent locations. Host access is opt-in.
+# home-relative state into persistent locations. Host credentials and tools
+# are not exposed by the manifest.
 
 # Claude Code keeps ~/.claude.json next to (not inside) ~/.claude unless
 # CLAUDE_CONFIG_DIR is set. Point it at the persisted ~/.claude so the file

@@ -14,8 +14,8 @@ Project direction:
 - Package `https://github.com/pingdotgg/t3code` instead of `https://github.com/FilenCloudDienste/filen-desktop`.
 - Prefer a sandboxed Flatpak with its own filesystem.
 - Do not use `flatpak-spawn` host wrappers.
-- Do not grant `--filesystem=home` or host credential/tool access by default.
-- Do not grant `--talk-name=org.freedesktop.Flatpak` by default. Host integration requires explicit user overrides.
+- Do not grant host home, credential, or tool directories by default.
+- Do not grant `--talk-name=org.freedesktop.Flatpak`. Optional SSH-agent access uses a user `--socket=ssh-auth` override instead.
 - Add project directory access later through explicit per-path Flatpak overrides.
 
 Current implementation notes:
@@ -30,8 +30,8 @@ Current implementation notes:
 - The GitHub Actions build, release, and upstream-update workflows build only x86_64 until a Linux aarch64 AppImage exists.
 - The Codeberg Forgejo Actions workflow uses a self-hosted `flatpak-x86_64` runner with Flatpak tooling, direct `flatpak-builder` commands, and x86_64 only until a Linux aarch64 AppImage exists.
 - The app's in-app electron-updater flow is not the Flatpak update mechanism. Keep `x-checker-data` for packaging automation through `latest-linux.yml`.
-- T3 Code's backend, git, SSH, terminals, Tailscale, and provider integrations run as subprocesses inside the sandbox. Support them with bundled or app-installed tools. Host tools and command execution require explicit opt-in overrides.
-- Persistent project access is documented through explicit one-directory `flatpak override --user --filesystem=/path/to/project:rw com.t3tools.t3code` grants rather than broad manifest permissions. Host credentials and user-installed tools are not exposed by the default manifest.
+- T3 Code's backend, git, SSH, terminals, Tailscale, and provider integrations run as subprocesses inside the sandbox. Support them with bundled or app-installed tools, without a host-tool PATH entry or host commands.
+- Persistent project access is documented through explicit one-directory `flatpak override --user --filesystem=/path/to/project:rw com.t3tools.t3code` grants rather than broad manifest permissions. Host SSH/GPG keys and host tools remain inaccessible by default. App-private SSH state persists; agent authentication is opt-in.
 - GitHub Pages publishing is handled by `.github/workflows/pages-flatpak-repo.yml`. It builds a signed x86_64 OSTree repo at `repo/`, generates `t3code.flatpakrepo` and `t3code.flatpakref` from templates, and deploys the Pages artifact with the official Pages actions. The default generated URL is `https://OWNER.github.io/REPOSITORY/t3code.flatpakrepo`, with `https://OWNER.github.io/t3code.flatpakrepo` for `OWNER.github.io` repositories. Set the public repository variable `FLATPAK_REPO_URL` if Pages uses a custom domain or nonstandard base URL. Automatic publishing requires `PUBLISH_FLATPAK_REPO=true` plus `FLATPAK_GPG_PRIVATE_KEY` and `FLATPAK_GPG_KEY_ID` secrets.
 - `.github/workflows/update-t3code-appimage.yml` repins only the upstream T3 Code AppImage. It downloads the AppImage and computes SHA-256 locally, optionally cross-checking GitHub's release digest when present, then creates a normalized `t3code-v...` release tag.
 - `.github/workflows/update-bundled-runtime-pins.yml` repins only the bundled sandbox runtime inputs: Node.js, Git, and OpenSSH. It stays within current major versions unless manually run with `allow_major`, validates the scripts, and opens a pull request rather than pushing directly to `main`.
