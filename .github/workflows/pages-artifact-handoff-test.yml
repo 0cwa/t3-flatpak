@@ -24,9 +24,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Check production artifact contract
-        run: python3 scripts/check-pages-artifact-contract.py
-
       - name: Create unsigned fixture (no Flatpak build or signing)
         shell: bash
         run: |
@@ -72,3 +69,9 @@ jobs:
           mkdir -p extracted
           tar -xzf "$archive" -C extracted
           test -f "extracted/repo-${arch}/config"
+
+      # Run after the fixture so the real actions can be validated even
+      # while main still has the bug being fixed by PR #5.
+      - name: Check production artifact contract
+        if: always()
+        run: python3 scripts/check-pages-artifact-contract.py
