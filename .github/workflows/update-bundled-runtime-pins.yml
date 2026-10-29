@@ -66,14 +66,16 @@ jobs:
 
           body="$(printf 'Updates bundled runtime source pins for the T3 Code Flatpak.\n\n- Node.js: %s\n- Git: %s\n- OpenSSH: %s\n\nThis workflow keeps updates separate from upstream T3 Code AppImage repinning.' "$NODE_VERSION" "$GIT_VERSION" "$OPENSSH_VERSION")"
 
-          if gh pr view "$branch" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh pr edit "$branch" --repo "$GITHUB_REPOSITORY" \
-              --title "chore: update bundled runtime pins" \
-              --body "$body"
+          # Use the repository endpoint explicitly, including in contributor
+          # forks where PR discovery must not select the parent repository.
+          owner="${GITHUB_REPOSITORY%%/*}"
+          pr_number="$(gh api --method GET "repos/$GITHUB_REPOSITORY/pulls" \
+            -f state=open -f base=main -f "head=$owner:$branch" --jq '.[0].number // empty')"
+          if [ -n "$pr_number" ]; then
+            gh api --method PATCH "repos/$GITHUB_REPOSITORY/pulls/$pr_number" \
+              -f title="chore: update bundled runtime pins" -f body="$body"
           else
-            gh pr create --repo "$GITHUB_REPOSITORY" \
-              --base main \
-              --head "$branch" \
-              --title "chore: update bundled runtime pins" \
-              --body "$body"
+            gh api --method POST "repos/$GITHUB_REPOSITORY/pulls" \
+              -f base=main -f "head=$owner:$branch" \
+              -f title="chore: update bundled runtime pins" -f body="$body"
           fi
