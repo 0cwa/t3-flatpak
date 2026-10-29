@@ -8,7 +8,7 @@ not a security isolation boundary; its binaries and libraries inherit the
 application's effective filesystem, bus, network, and user override grants.
 
 Keep app state persistent using Flatpak's XDG app directories, and preserve
-`--persist=.t3`, `--persist=.codex`, and `--persist=.claude` if the launcher
+`--persist=.t3`, `--persist=.codex`, `--persist=.claude`, and `--persist=.ssh` if the launcher
 and application require those paths. Allow individual projects by explicit
 per-directory overrides, not `home` or `host` defaults.
 
@@ -21,9 +21,17 @@ purpose-built authentication flow when practical. Revoke overrides when done.
 No automatic host-command bridge is required to run bundled Git, OpenSSH,
 Node, or provider CLIs within the sandbox.
 
-Run `python3 scripts/check-flatpak-security.py` and `bash -n startt3code`.
-The checker blocks known dangerous manifest defaults and launcher patterns;
-it is deliberately not proof of runtime isolation. On a disposable Flatpak
+Install the pinned PyYAML dependency from `scripts/requirements-security.txt`
+in your Python environment, then run `python3 scripts/check-flatpak-security.py`,
+`python3 -m unittest discover -s tests -p test_flatpak_security.py`, and
+`bash -n startt3code`.
+The checker parses YAML before examining permissions, so quoted values, aliases,
+flow lists, and folded scalars receive the same checks. It rejects duplicate keys
+and malformed permission lists, host filesystem and credential grants, wildcard
+access to the Flatpak bus name, and known literal launcher bridge patterns.
+App-private persistence such as `--persist=.ssh` does not grant host key access.
+The check does not interpret arbitrary shell code or prove runtime isolation.
+On a disposable Flatpak
 installation, additionally inspect effective metadata and overrides, confirm
 that the Flatpak session-bus name is inaccessible, verify that host SSH/GPG
 sentinels are unreadable, check permitted project mounts and persisted state,
