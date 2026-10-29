@@ -13,13 +13,16 @@ def step(workflow: str, name: str) -> str:
     start = workflow.find(heading)
     if start == -1:
         raise AssertionError(f"Missing workflow step: {name}")
-    end = workflow.find("\n      - name:", start + len(heading))
-    return workflow[start:end if end != -1 else None]
+    body_start = start + len(heading)
+    boundary = re.search(r"(?m)^(?: {0,5}\S| {6}- )", workflow[body_start:])
+    end = body_start + boundary.start() if boundary else None
+    return workflow[start:end]
 
 
 def require(text: str, fragments: tuple[str, ...], context: str) -> None:
+    lines = {line.strip() for line in text.splitlines()}
     for fragment in fragments:
-        if fragment not in text:
+        if fragment not in lines:
             raise AssertionError(f"{context}: missing {fragment!r}")
 
 
