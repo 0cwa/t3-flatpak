@@ -1,14 +1,14 @@
 name: CI Build Flatpak
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
   workflow_dispatch:
 jobs:
   flatpak:
     name: "Flatpak"
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
       options: --privileged
     strategy:
       matrix:
@@ -26,3 +26,28 @@ jobs:
           cache-key: flatpak-builder-${{ github.sha }}
           arch: ${{ matrix.variant.arch }}
           verbose: true
+
+      - name: Check installed SSH boundaries with a disposable key and agent
+        shell: bash
+        env:
+          T3_DISPOSABLE_ACCOUNT: '1'
+        run: bash tests/check-ssh-boundary.sh t3code.flatpak
+
+      - name: Check installed runtime tools and optional extensions
+        shell: bash
+        env:
+          T3_DISPOSABLE_ACCOUNT: '1'
+        run: bash tests/run-tool-extension-check.sh t3code.flatpak
+
+      - name: Create checksum
+        run: sha256sum t3code.flatpak > t3code.flatpak.sha256
+
+      - name: Upload Flatpak and checksum
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-flatpak
+          path: |
+            t3code.flatpak
+            t3code.flatpak.sha256
+          if-no-files-found: error
+          compression-level: 0

@@ -12,12 +12,14 @@ Keep app state persistent using Flatpak's XDG app directories, and preserve
 and application require those paths. Allow individual projects by explicit
 per-directory overrides, not `home` or `host` defaults.
 
-Users needing host keys can explicitly accept their exposure, for example via
-`flatpak override --user --filesystem=~/.ssh:ro com.t3tools.t3code`.
-This shares **readable key material with all sandbox processes**, including
-provider CLIs and extension commands. Read-only is not confidentiality.
-Prefer app-owned credentials, narrowly selected key files, or another
-purpose-built authentication flow when practical. Revoke overrides when done.
+For SSH remotes, prefer the documented
+[opt-in SSH-agent access](../README.md#optional-ssh-agent-access). It lets all
+sandbox processes request authentication with the agent's loaded keys without
+mounting private-key files; use the dedicated-key and confirmation precautions
+described there. Host credential-directory overrides, including older
+`~/.ssh:ro` grants, expose **readable key material to all sandbox processes**.
+Read-only is not confidentiality. Revoke those overrides using the instructions
+in the same section, or use app-owned credentials when practical.
 No automatic host-command bridge is required to run bundled Git, OpenSSH,
 Node, or provider CLIs within the sandbox.
 
@@ -31,8 +33,9 @@ and malformed permission lists, host filesystem and credential grants, wildcard
 access to the Flatpak bus name, and known literal launcher bridge patterns.
 App-private persistence such as `--persist=.ssh` does not grant host key access.
 The check does not interpret arbitrary shell code or prove runtime isolation.
-On a disposable Flatpak
-installation, additionally inspect effective metadata and overrides, confirm
+Use a disposable OS account or ephemeral CI container for runtime checks:
+separate Flatpak installations still share `~/.var/app` state. Additionally
+inspect effective metadata and overrides, confirm
 that the Flatpak session-bus name is inaccessible, verify that host SSH/GPG
 sentinels are unreadable, check permitted project mounts and persisted state,
 and exercise an installed and absent tool extension. Account for any
