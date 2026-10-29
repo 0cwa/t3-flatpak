@@ -15,7 +15,9 @@ socket.
 The default sandbox grants display, IPC, network, portal-based file picking, and
 cursor theme access. It does not grant access to the full home directory, SSH
 agent, host command execution, host private keys, or broad host filesystems.
-SSH-agent access is available through an explicit user override described below.
+SSH-agent and GPG-agent access are available through explicit user overrides
+described below. These are optional authentication permissions, not requirements
+for launching T3 Code or using every provider.
 
 Provider CLIs can be installed into app data with the sandbox-local helper below.
 Project directory access still requires an explicit per-path override.
@@ -128,6 +130,13 @@ flatpak override --user --socket=ssh-auth com.t3tools.t3code
 Restart T3 Code. On the host, ensure the agent contains the intended key.
 Inside T3 Code's terminal, `ssh-add -l` lists the available agent identities.
 Git then uses the bundled SSH client for authentication.
+
+The package already includes `--persist=.ssh`, so current builds do not need a
+separate persistence override. For an older build without it, use:
+
+```bash
+flatpak override --user --persist=.ssh --socket=ssh-auth com.t3tools.t3code
+```
 
 Every provider, extension, and project subprocess inherits agent access. An
 agent does not normally disclose private-key material, but those processes can
