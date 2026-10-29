@@ -14,14 +14,15 @@ socket.
 
 The default sandbox grants display, IPC, network, portal-based file picking, and
 cursor theme access. It does not grant access to the full home directory, SSH
-agent, host command spawning, or broad host filesystems.
+agent, host command execution, host private keys, or broad host filesystems.
+SSH-agent access is available through an explicit user override described below.
 
 Provider CLIs can be installed into app data with the sandbox-local helper below.
 Project directory access still requires an explicit per-path override.
 
 ## Sandbox runtime tools
 
-The Flatpak bundles sandbox-local `node`, `npm`, `npx`, `corepack`, `git`, and OpenSSH client tools. These are real binaries inside `/app`, not host wrappers. The manifest does not add `flatpak-spawn`, `--filesystem=home`, `--socket=ssh-auth`, or broad host filesystem access to make them work.
+The Flatpak bundles sandbox-local `node`, `npm`, `npx`, `corepack`, `git`, OpenSSH client tools, and the `gh`, `glab`, and `tea` hosting CLIs. These are real binaries inside `/app`, not host wrappers. The launcher does not add host `~/.local/bin` to `PATH`. The manifest does not grant host command execution, home access, or SSH-agent access.
 
 The launcher configures npm globals and cache under T3 Code app data:
 
@@ -32,6 +33,40 @@ PATH=$NPM_CONFIG_PREFIX/bin:/app/bin:$PATH
 ```
 
 When installed normally, those resolve under `~/.var/app/com.t3tools.t3code/data/npm-global` and `~/.var/app/com.t3tools.t3code/cache/npm`.
+
+## Optional tool extensions
+
+Separately maintained tool sets can use the `com.t3tools.t3code.Tools`
+extension point. Extensions are installed explicitly; installing or updating
+T3 Code does not automatically download them.
+
+For a separately maintained toolset, configure its remote and install its
+matching branch. Replace the example remote and extension name below with
+those supplied by its maintainer:
+
+```bash
+flatpak install --user <remote> com.t3tools.t3code.Tools.Example//26.08
+```
+
+The extension branch must match T3 Code's Freedesktop runtime version, currently
+`26.08`. A runtime upgrade requires a matching extension build. Restart T3 Code
+after installing, updating, or removing an extension.
+
+Extensions mount at `/app/tools/<Name>`. The launcher adds their existing `bin`
+directories to `PATH` in glob order, after npm globals and `/app/bin`,
+but before the inherited runtime paths. Flatpak registers each extension's
+`lib` directory with the dynamic loader. Tool-specific configuration belongs
+in the extension. Extension loading adds no sandbox permissions, but extension
+commands run with the application's existing access to app data, network, and
+mounted projects. Only install extensions from maintainers you trust.
+
+The [integration check](tests/README.md) runs in CI after the application build.
+It installs the bundle under a disposable account, builds and installs
+`tests/extension-fixture/com.t3tools.t3code.Tools.Test.yml`, verifies command
+and shared-library loading, then uninstalls the fixture and checks the launcher
+again. The fixture has no rpath, so successful execution checks Flatpak's
+library loading as well as command discovery. A separate Flatpak installation
+still shares app data; use a disposable OS account for local runs.
 
 ## Provider CLIs
 
@@ -52,9 +87,84 @@ sandbox. That code can access T3 Code app data and any project paths explicitly
 mounted into the Flatpak later. It does not gain broad host filesystem access
 unless you grant it.
 
+## Persistent data
+
+Without home directory access, `$HOME` inside the sandbox is a temporary
+filesystem that is discarded when T3 Code exits. Only
+`~/.var/app/com.t3tools.t3code` and explicitly granted project paths survive.
+The package therefore maps every state location T3 Code and its tools use into
+that app directory:
+
+| Inside the sandbox | Stored on the host | Contents | Mechanism |
+|---|---|---|---|
+| `~/.t3` | `~/.var/app/com.t3tools.t3code/.t3` | T3 Code settings, keybindings, threads (`state.sqlite`), login tokens, secrets, worktrees | `--persist=.t3` |
+| `~/.codex` | `~/.var/app/com.t3tools.t3code/.codex` | Codex CLI config and auth | `--persist=.codex` |
+| `~/.claude` | `~/.var/app/com.t3tools.t3code/.claude` | Claude Code config, including `.claude.json` | `--persist=.claude` + `CLAUDE_CONFIG_DIR` |
+| `~/.ssh` | `~/.var/app/com.t3tools.t3code/.ssh` | sandbox-local SSH configuration and verified `known_hosts`; not the host SSH directory | `--persist=.ssh` |
+| `$XDG_CONFIG_HOME/git/config` | `~/.var/app/com.t3tools.t3code/config/git/config` | `git config --global` settings | launcher creates the file so git prefers it over `~/.gitconfig` |
+| `$HISTFILE` | `~/.var/app/com.t3tools.t3code/.local/state/bash/history` | terminal shell history | launcher sets `HISTFILE` |
+| `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME`, `$XDG_CACHE_HOME` | `~/.var/app/com.t3tools.t3code/{config,data,cache}` | Electron profile, OpenCode, npm globals and cache | Flatpak default |
+
+The app-specific state is separate from the host's `~/.t3`, `~/.codex`,
+`~/.claude`, `~/.ssh`, and `~/.gitconfig`. Host credential and tool directories
+are not exposed. If you grant `--filesystem=home`, Flatpak ignores `--persist`
+and uses the host home directly.
+
+T3 Code worktrees live under `~/.t3/worktrees` inside the sandbox. Host-side
+git sees those worktree paths as missing, so `git worktree prune` on the host
+(which `git gc` also runs for entries older than `gc.worktreePruneExpire`,
+three months by default) would drop their metadata. Manage those worktrees
+from inside T3 Code.
+
+## Optional SSH-agent access
+
+Git can authenticate to SSH remotes through the host SSH agent without reading
+host private-key files or running host commands. Opt in with:
+
+```bash
+flatpak override --user --socket=ssh-auth com.t3tools.t3code
+```
+
+Restart T3 Code. On the host, ensure the agent contains the intended key.
+Inside T3 Code's terminal, `ssh-add -l` lists the available agent identities.
+Git then uses the bundled SSH client for authentication.
+
+Every provider, extension, and project subprocess inherits agent access. An
+agent does not normally disclose private-key material, but those processes can
+request authentication with its loaded keys while access lasts. Prefer a
+dedicated agent containing a limited-scope key. Where supported, load it with
+`ssh-add -c` for per-use confirmation and `ssh-add -t` for a limited lifetime.
+Hardware-backed keys requiring touch can provide another confirmation boundary.
+
+The app has its own persistent `~/.ssh/config` and `~/.ssh/known_hosts`. Configure
+host aliases there and verify server fingerprints against a trusted source,
+such as the hosting service's published fingerprints. Do not disable host-key
+checking or blindly trust `ssh-keyscan` output. The host's SSH config and known
+hosts are not automatically imported.
+
+To revoke agent access, run:
+
+```bash
+flatpak override --user --nosocket=ssh-auth com.t3tools.t3code
+```
+
+Restart the application after revoking access. Users who previously granted
+host credential directories or the host command bridge should also revoke
+those older overrides:
+
+```bash
+flatpak override --user --nofilesystem=~/.ssh --nofilesystem=~/.gnupg \
+  --nofilesystem=~/.local/bin --no-talk-name=org.freedesktop.Flatpak com.t3tools.t3code
+```
+
+These revocations cannot undo earlier credential disclosure. Agent access is a
+separate permission and does not require any of those directory or D-Bus grants.
+See [the disposable SSH boundary checks](tests/ssh-boundary.md) for runtime validation.
+
 ## Project access
 
-T3 Code's private app data lives under `~/.var/app/com.t3tools.t3code`. The
+T3 Code's private app data lives under `~/.var/app/com.t3tools.t3code` (see
+[Persistent data](#persistent-data)). The
 default Flatpak sandbox does not grant access to your repositories.
 
 For persistent access to one project directory, add a narrow user override:
@@ -63,10 +173,32 @@ For persistent access to one project directory, add a narrow user override:
 flatpak override --user --filesystem=/path/to/project:rw com.t3tools.t3code
 ```
 
+If a project is a symlink whose destination lies outside the granted directory,
+grant access to the resolved destination as well. Access to the directory
+containing a symlink does not expose an otherwise inaccessible target:
+
+```bash
+realpath "$HOME/projects/example"
+flatpak override --user --filesystem="$(realpath "$HOME/projects/example"):rw" com.t3tools.t3code
+```
+
+Here, `$HOME/projects/example` is the symlink. Keep access to its containing
+directory if you want to open the project through that link. The additional
+grant covers the resolved destination at the time of the command. If the link
+is changed to point elsewhere, review and grant its new destination separately.
+Do not grant `home` or `host` just to expose arbitrary symlink targets.
+
 To revoke that project later:
 
 ```bash
 flatpak override --user --nofilesystem=/path/to/project com.t3tools.t3code
+```
+
+For a symlink target grant, revoke the actual destination path that was granted,
+even if the link has since changed or been removed:
+
+```bash
+flatpak override --user --nofilesystem=/actual/path/to/project com.t3tools.t3code
 ```
 
 Inspect active permissions with:
@@ -79,6 +211,30 @@ flatpak override --user --show com.t3tools.t3code
 Mounted project paths are visible to T3 Code and any sandbox-local tools it runs,
 including terminals and provider CLIs. Broad `home` or `host` filesystem grants
 are intentionally not recommended.
+
+## Building locally
+
+To build the x86_64 Flatpak bundle locally, install Podman and run the Flathub Flatpak build image from the repository root. The named `t3-flatpak-build` volume keeps Flatpak's SDK, build state, and OSTree repository between runs. The generated bundle is written to `out/t3code.flatpak`.
+
+```bash
+mkdir -p out
+podman run --rm --privileged \
+  -v "$PWD":/src:ro \
+  -v "$PWD/out":/out \
+  -v t3-flatpak-build:/build \
+  -e FLATPAK_USER_DIR=/build/flatpak \
+  ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08 \
+  sh -euxc '
+    flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+    flatpak-builder --user --force-clean --install-deps-from=flathub --disable-rofiles-fuse \
+      --state-dir=/build/state --repo=/build/repo \
+      /build/builddir /src/com.t3tools.t3code.yml
+    flatpak build-bundle /build/repo /out/t3code.flatpak com.t3tools.t3code master \
+      --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
+  '
+```
+
+The container needs network access to Flathub and the upstream source hosts. `--privileged` is required by the supplied build image for its Flatpak build setup. `--force-clean` recreates the build directory, while cached downloads and the repository remain in the named volume. To start with a fresh cache and build repository, remove that volume with `podman volume rm t3-flatpak-build` after stopping other builds that use it.
 
 ## Installation and automatic updates
 
