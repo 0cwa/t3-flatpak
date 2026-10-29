@@ -23,7 +23,6 @@ jobs:
           bundle: t3code.flatpak
           upload-artifact: false
           manifest-path: com.t3tools.t3code.yml
-          cache-key: flatpak-builder-${{ github.sha }}
           arch: ${{ matrix.variant.arch }}
           verbose: true
 
