@@ -240,12 +240,12 @@ The container needs network access to Flathub and the upstream source hosts. `--
 
 This repository publishes a signed x86_64 Flatpak repository at:
 
-<https://0cwa.github.io/t3-flatpak/>
+<https://openSUSE-Python.github.io/t3-flatpak/>
 
 Add the remote and install T3 Code with:
 
 ```bash
-flatpak remote-add --user --if-not-exists t3code https://0cwa.github.io/t3-flatpak/t3code.flatpakrepo
+flatpak remote-add --user --if-not-exists t3code https://openSUSE-Python.github.io/t3-flatpak/t3code.flatpakrepo
 flatpak install --user t3code com.t3tools.t3code
 ```
 
@@ -259,7 +259,7 @@ flatpak update --user com.t3tools.t3code
 The standalone app reference is also available for one-click installation:
 
 ```bash
-flatpak install --user https://0cwa.github.io/t3-flatpak/t3code.flatpakref
+flatpak install --user https://openSUSE-Python.github.io/t3-flatpak/t3code.flatpakref
 ```
 
 This package intentionally supports x86_64 only. The manifest and Pages
@@ -294,7 +294,7 @@ Before the first publish:
    the trailing slash or `/repo/`. The workflow appends `/repo/` when it
    generates repository metadata. To keep the documented URL when the GitHub
    repository slug is not `t3-flatpak`, set it to
-   `https://0cwa.github.io/t3-flatpak`.
+   `https://openSUSE-Python.github.io/t3-flatpak`.
 7. In repository Settings → Pages, set the source to **GitHub Actions**. A
    branch/folder Pages source will not deploy this workflow's artifact.
 
