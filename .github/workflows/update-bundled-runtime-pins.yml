@@ -68,7 +68,7 @@ jobs:
           # automation branch. Reject lookup failures rather than guessing.
           if remote_ref="$(git ls-remote --heads origin "refs/heads/$branch")"; then
             if [ -n "$remote_ref" ]; then
-              git fetch --no-tags origin                 "+refs/heads/$branch:refs/remotes/origin/$branch"
+              git fetch --no-tags origin "+refs/heads/$branch:refs/remotes/origin/$branch"
             fi
           else
             echo "Could not inspect the runtime update branch on origin." >&2
