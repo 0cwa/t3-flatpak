@@ -161,6 +161,37 @@ These revocations cannot undo earlier credential disclosure. Agent access is a
 separate permission and does not require any of those directory or D-Bus grants.
 See [the disposable SSH boundary checks](tests/ssh-boundary.md) for runtime validation.
 
+## Optional GPG-agent access
+
+If your workflow needs the host GPG agent, for example for GPG-signed Git
+commits, grant access and preserve sandbox-local GnuPG state with:
+
+```bash
+flatpak override --user --socket=gpg-agent --persist=.gnupg com.t3tools.t3code
+```
+
+Restart T3 Code after changing permissions. This preserves the sandbox's own
+`~/.gnupg` under `~/.var/app/com.t3tools.t3code/.gnupg`; it does not expose or
+import the host's `~/.gnupg`, public keyring, or configuration. The socket grant
+alone does not install a GPG client or configure Git signing. Check that `gpg`
+is available inside T3 Code's terminal and configure the required public keys
+and signing identity there. This package does not explicitly bundle GnuPG, and
+the SSH boundary test does not validate GPG signing.
+
+All sandbox processes gain access to the agent socket, including providers,
+extensions, and project commands. They can request operations permitted by the
+agent; do not assume that every request requires fresh confirmation. Only
+enable this permission if you trust those processes with that access.
+
+To revoke GPG-agent access:
+
+```bash
+flatpak override --user --nosocket=gpg-agent com.t3tools.t3code
+```
+
+Restart T3 Code after revoking access. Revocation does not delete the persisted
+sandbox-local GnuPG state.
+
 ## Project access
 
 T3 Code's private app data lives under `~/.var/app/com.t3tools.t3code` (see
