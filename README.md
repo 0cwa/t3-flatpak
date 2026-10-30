@@ -334,3 +334,26 @@ It expects a self-hosted x86_64 runner labeled `flatpak-x86_64` with `flatpak`,
 `flatpak-builder`, network access to Flathub and GitHub release assets, and
 enough permissions for Flatpak builds. If hosted Codeberg CI is required instead
 of a maintained runner, Woodpecker is the practical Codeberg-hosted path.
+
+## Contributor credits
+
+[Matěj Cepl (@mcepl)](https://github.com/mcepl) contributed the work in
+[#2](https://github.com/0cwa/t3-flatpak/pull/2),
+[#4](https://github.com/0cwa/t3-flatpak/pull/4),
+[#5](https://github.com/0cwa/t3-flatpak/pull/5),
+[#6](https://github.com/0cwa/t3-flatpak/pull/6),
+[#7](https://github.com/0cwa/t3-flatpak/pull/7),
+[#8](https://github.com/0cwa/t3-flatpak/pull/8),
+[#10](https://github.com/0cwa/t3-flatpak/pull/10), and
+[#11](https://github.com/0cwa/t3-flatpak/pull/11). Those contributor commits
+were preserved when the changes were integrated through
+[#13](https://github.com/0cwa/t3-flatpak/pull/13) and
+[#15](https://github.com/0cwa/t3-flatpak/pull/15). The related updater fix
+in [#16](https://github.com/0cwa/t3-flatpak/pull/16) also includes a
+`Co-authored-by` commit trailer crediting Matěj. Three early commits in #2
+retain `Unknown` as their original Git author name; this acknowledgement
+makes the PR-level attribution explicit without rewriting their history.
+
+The work in #6, #7, and #8 was adapted from earlier **Codefloe** commits,
+as documented in those pull requests. Credit for that source work belongs
+alongside the contributors who adapted and integrated it.
