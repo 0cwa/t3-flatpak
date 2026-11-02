@@ -47,8 +47,8 @@ modules:
       - ln -s ../lib/nodejs/bin/corepack /app/bin/corepack
     sources:
       - type: archive
-        url: https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.xz
-        sha256: fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6
+        url: https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-x64.tar.xz
+        sha256: 48cc0e21e048790e54c0cf5749c2725005313d652651c40b7a21feb9697aaf75
         only-arches: [x86_64]
 
   - name: git
@@ -113,8 +113,8 @@ modules:
       - install -m644 ssh_config /app/etc/ssh/ssh_config
     sources:
       - type: archive
-        url: https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.5p1.tar.gz
-        sha256: d44d28a839ea9daf969cc69150fde59910b2b39361dad81a3bd6cbd19218db11
+        url: https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.6p1.tar.gz
+        sha256: a9dc9565dffe8640f64d863cd29a32bc4a3dbdec0566a7fc44c5d6ee767d5f39
 
   - name: t3code
     buildsystem: simple
