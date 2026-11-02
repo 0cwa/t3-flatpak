@@ -195,8 +195,8 @@ jobs:
           ref_file="$artifact_dir/t3code-ref-${arch}.txt"
           expected_ref="app/${APP_ID}/${arch}/master"
 
-          test -s "$archive"
-          test -s "$ref_file"
+          test -s "$archive" || { echo "Missing repository archive: $archive" >&2; exit 1; }
+          test -s "$ref_file" || { echo "Missing application ref: $ref_file" >&2; exit 1; }
           test "$(<"$ref_file")" = "$expected_ref"
 
           extract_dir="$RUNNER_TEMP/t3code-${arch}"
@@ -337,7 +337,10 @@ jobs:
           grep -Eq '^RuntimeRepo=https://flathub\.org/repo/flathub\.flatpakrepo$' site/t3code.flatpakref
           grep -Eq '^IsRuntime=false$' site/t3code.flatpakref
           grep -Eq '^GPGKey=[A-Za-z0-9+/=]+$' site/t3code.flatpakref
-          ! grep -Eq '@[A-Z_]+@' site/t3code.flatpakrepo site/t3code.flatpakref
+          if grep -Eq '@[A-Z_]+@' site/t3code.flatpakrepo site/t3code.flatpakref; then
+            echo "Unexpanded placeholders remain in repository descriptors." >&2
+            exit 1
+          fi
           grep -Fq 't3code.flatpakrepo' site/index.html
           grep -Fq 't3code.flatpakref' site/index.html
           grep -Fq 'flatpak install --user t3code com.t3tools.t3code' site/index.html

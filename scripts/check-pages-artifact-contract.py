@@ -55,8 +55,8 @@ def main() -> None:
         'archive="$artifact_dir/t3code-ostree-${arch}.tar.gz"',
         'ref_file="$artifact_dir/t3code-ref-${arch}.txt"',
         'expected_ref="app/${APP_ID}/${arch}/master"',
-        'test -s "$archive"',
-        'test -s "$ref_file"',
+        'test -s "$archive" || { echo "Missing repository archive: $archive" >&2; exit 1; }',
+        'test -s "$ref_file" || { echo "Missing application ref: $ref_file" >&2; exit 1; }',
         'test "$(<"$ref_file")" = "$expected_ref"',
     ), "consumer")
     print("Pages x86_64 producer / download / consumer contract: OK")
