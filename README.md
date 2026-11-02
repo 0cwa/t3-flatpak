@@ -320,10 +320,14 @@ Before the first publish:
    key securely; users trust its public key from the generated descriptors.
 2. Add `FLATPAK_GPG_PRIVATE_KEY` as an ASCII-armored GitHub Actions secret.
 3. Add `FLATPAK_GPG_KEY_ID` as the signing key ID or fingerprint secret.
-4. Add `GH_TOKEN` as a token authorized to push commits and tags. The updater
-   uses it because pushes made with the default `github.token` do not trigger
-   downstream CI, release, and Pages workflows. The updater fails before
-   changing anything when this secret is absent.
+4. The AppImage updater uses the default `github.token` to push commits and
+   tags, then explicitly dispatches downstream CI and release workflows.
+   It dispatches Pages only when `PUBLISH_FLATPAK_REPO` is `true`.
+   Optionally add `GH_TOKEN` as a token authorized to push commits and tags;
+   its pushes trigger downstream workflows automatically instead. Allow GitHub
+   Actions to create pull requests for the bundled-runtime updater.
+   Set the repository's default branch to `main` so scheduled workflows use
+   the same maintained branch as builds and publishing.
 5. Set the public repository variable `PUBLISH_FLATPAK_REPO` to `true` after
    the signing secrets are ready. Automatic publication is restricted to
    `refs/heads/main`; manual dispatch is also restricted to that ref.
@@ -347,17 +351,21 @@ discarded between successful publishes.
 
 ## CI and update maintenance
 
-GitHub Actions builds the x86_64 Flatpak bundle on pushes, pull requests, and
-manual dispatches. Release tags matching `v*` or `t3code-v*` run a verified
-release workflow that checks the manifest uses an immutable upstream AppImage
+GitHub Actions builds the x86_64 Flatpak bundle on pushes to `main`, pull
+requests, and manual dispatches. Release tags matching `v*` or `t3code-v*` run
+a verified release workflow that checks the manifest uses an immutable upstream AppImage
 URL and pinned SHA-256 before publishing bundle artifacts.
 
 The scheduled `Update T3 Code AppImage` workflow checks the latest upstream
 GitHub release, downloads the Linux x86_64 AppImage, computes its SHA-256
-locally, updates the manifest pin when needed, and creates a matching
-`t3code-v...` release tag. With `GH_TOKEN` configured, its `main` push triggers
-the downstream build, release, and Pages workflows. The Flatpak build removes
-upstream Electron updater metadata from the extracted AppImage so application
+locally, and publishes a manifest change and its matching `t3code-v...` release
+tag atomically. With the default token, it checks for existing build,
+permission-regression, release, and opted-in Pages runs and requests only
+missing workflows. Rerunning the updater recovers interrupted dispatches;
+rerun an existing failed downstream run from Actions. With `GH_TOKEN`
+configured, pushes trigger downstream workflows automatically instead.
+The Flatpak build removes upstream Electron updater metadata from the extracted
+AppImage so application
 updates come from the Flatpak remote, not from T3 Code writing into `/app` at
 runtime. Keep `x-checker-data` pointed at `latest-linux.yml`; it is packaging
 metadata, not a runtime update channel.
