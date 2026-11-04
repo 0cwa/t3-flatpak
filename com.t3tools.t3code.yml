@@ -31,6 +31,7 @@ finish-args:
   # on exit. Map app state dirs that ignore XDG onto persistent app storage.
   # SSH configuration and known_hosts are app-private, not host mounts.
   - --persist=.t3 # T3 Code settings, state DB, auth tokens, secrets, worktrees
+  - --persist=.pi # Pi settings, sessions, and provider credentials
   - --persist=.codex # Codex CLI
   - --persist=.claude # Claude Code (startt3code points CLAUDE_CONFIG_DIR here)
   - --persist=.ssh # sandbox-local SSH configuration and verified host keys

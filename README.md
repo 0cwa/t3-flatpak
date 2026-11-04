@@ -100,6 +100,7 @@ that app directory:
 | Inside the sandbox | Stored on the host | Contents | Mechanism |
 |---|---|---|---|
 | `~/.t3` | `~/.var/app/com.t3tools.t3code/.t3` | T3 Code settings, keybindings, threads (`state.sqlite`), login tokens, secrets, worktrees | `--persist=.t3` |
+| `~/.pi` | `~/.var/app/com.t3tools.t3code/.pi` | Pi settings, sessions, and provider credentials (including `agent/auth.json`) | `--persist=.pi` |
 | `~/.codex` | `~/.var/app/com.t3tools.t3code/.codex` | Codex CLI config and auth | `--persist=.codex` |
 | `~/.claude` | `~/.var/app/com.t3tools.t3code/.claude` | Claude Code config, including `.claude.json` | `--persist=.claude` + `CLAUDE_CONFIG_DIR` |
 | `~/.ssh` | `~/.var/app/com.t3tools.t3code/.ssh` | sandbox-local SSH configuration and verified `known_hosts`; not the host SSH directory | `--persist=.ssh` |
@@ -107,10 +108,13 @@ that app directory:
 | `$HISTFILE` | `~/.var/app/com.t3tools.t3code/.local/state/bash/history` | terminal shell history | launcher sets `HISTFILE` |
 | `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME`, `$XDG_CACHE_HOME` | `~/.var/app/com.t3tools.t3code/{config,data,cache}` | Electron profile, OpenCode, npm globals and cache | Flatpak default |
 
-The app-specific state is separate from the host's `~/.t3`, `~/.codex`,
-`~/.claude`, `~/.ssh`, and `~/.gitconfig`. Host credential and tool directories
-are not exposed. If you grant `--filesystem=home`, Flatpak ignores `--persist`
-and uses the host home directly.
+The app-specific state is separate from the host's `~/.t3`, `~/.pi`,
+`~/.codex`, `~/.claude`, `~/.ssh`, and `~/.gitconfig`. Host credential and tool
+directories are not exposed. If you grant `--filesystem=home`, Flatpak ignores
+`--persist` and uses the host home directly. From a terminal opened on a
+project, `cd .pi` looks for a `.pi` directory inside that project; use
+`cd ~/.pi/agent` to inspect Pi's sandbox-local data. On the host, that data is
+stored under `~/.var/app/com.t3tools.t3code/.pi/agent`.
 
 T3 Code worktrees live under `~/.t3/worktrees` inside the sandbox. Host-side
 git sees those worktree paths as missing, so `git worktree prune` on the host
