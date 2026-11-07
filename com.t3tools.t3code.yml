@@ -21,6 +21,8 @@ add-extensions:
     add-ld-path: lib
 
 finish-args:
+  # Electron needs the render device for accelerated compositing and animations.
+  - --device=dri
   - --socket=wayland
   - --socket=fallback-x11
   - --share=ipc

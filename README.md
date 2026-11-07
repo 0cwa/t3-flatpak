@@ -10,6 +10,19 @@ T3 Code runs natively on Wayland when launched from a Wayland session. X11 is st
 available as a fallback on non-Wayland sessions through Flatpak's `fallback-x11`
 socket.
 
+## Graphics acceleration
+
+The sandbox grants `--device=dri` so Electron can use the GPU for page
+compositing, rasterization, and animations. Without that permission Electron
+can fall back to software rendering, making navigation and animations laggy.
+
+For an older installation missing the permission, enable it locally and restart
+T3 Code:
+
+```bash
+flatpak override --user --device=dri com.t3tools.t3code
+```
+
 ## Sandbox
 
 The default sandbox grants display, IPC, network, portal-based file picking, and
