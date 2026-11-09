@@ -52,7 +52,7 @@ def unsafe_filesystem(value):
     if not separator or mode not in {"ro", "rw", "create"}:
         path = value
     base, _, relative = path.partition("/")
-    if base == "~" or base.startswith("xdg-"):
+    if base in {"~", "home"} or base.startswith("xdg-"):
         # These names expand before Flatpak resolves '..' on the host.
         relative = posixpath.normpath(relative)
         if relative == ".." or relative.startswith("../"):
@@ -60,6 +60,9 @@ def unsafe_filesystem(value):
     path = posixpath.normpath(path)
     if path.startswith("/"):
         path = "/" + path.lstrip("/")
+    # Flatpak also accepts home/path as a home-relative grant.
+    if path.startswith("home/"):
+        path = "~/" + path[len("home/"):]
     if path in {"home", "host", "host-os", "host-etc", "/", "/home", "/var/home"}:
         return True
 
@@ -75,7 +78,8 @@ def unsafe_filesystem(value):
             break
 
     protected_paths = (
-        "~/.ssh", "~/.gnupg", "~/.local/bin", "~/.config/gnupg", "xdg-config/gnupg"
+        "~/.ssh", "~/.gnupg", "~/.pi", "~/.t3", "~/.codex", "~/.claude",
+        "~/.local/bin", "~/.config/gnupg", "xdg-config/gnupg"
     )
     # Reject a protected directory, its children, and a parent exposing it.
     return any(

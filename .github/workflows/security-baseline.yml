@@ -22,5 +22,5 @@ jobs:
         run: python -m unittest discover -s tests -p test_appimage_update_workflow.py
       - name: Check default permissions and launcher
         run: python scripts/check-flatpak-security.py
-      - name: Check launcher syntax
-        run: bash -n startt3code
+      - name: Check launcher and Pi integration-test syntax
+        run: bash -n startt3code tests/check-pi-persistence.sh

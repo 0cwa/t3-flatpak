@@ -55,6 +55,17 @@ class FlatpakSecurityTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.check_source(f'finish-args: ["--filesystem={path}"]\n', False)
 
+    def test_host_pi_and_other_app_state_cannot_be_mounted(self):
+        for path in (
+            "~/.pi", "~/.pi:ro", "~/.pi/agent/auth.json:ro",
+            "~/./.pi/agent/settings.json:ro", "home/.pi:ro",
+            "home/.pi/agent/sessions:ro", "/home/alice/.pi:ro",
+            "/var/home/alice/.pi:ro", "home/.ssh:ro",
+            "~/.t3:ro", "~/.codex:ro", "~/.claude:ro",
+        ):
+            with self.subTest(path=path):
+                self.check_source(f'finish-args: ["--filesystem={path}"]\n', False)
+
     def test_invalid_or_ambiguous_manifests_fail_closed(self):
         for source in (
             "{}\n", "finish-args: false\n", "finish-args: [null]\n",
@@ -72,6 +83,7 @@ class FlatpakSecurityTests(unittest.TestCase):
             'finish-args:\n'
             '  - *network\n'
             '  - --persist=.ssh\n'
+            '  - --persist=.pi\n'
             '  - --persist=.codex\n'
             '  - --persist=.claude\n'
             '  - --persist=.t3\n'

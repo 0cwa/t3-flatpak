@@ -52,7 +52,9 @@ p.read(sys.argv[1])
 context = p['Context']
 sockets = context.get('sockets', '').split(';')
 assert 'ssh-auth' not in sockets, 'SSH agent must be opt-in'
-assert '.ssh' in context.get('persistent', '').split(';'), 'App-private SSH state must persist'
+persistent = context.get('persistent', '').split(';')
+assert '.ssh' in persistent, 'App-private SSH state must persist'
+assert '.pi' in persistent, 'App-private Pi settings and credentials must persist'
 filesystems = context.get('filesystems', '').split(';')
 for grant in filesystems:
     path = grant.split(':', 1)[0]
@@ -97,4 +99,5 @@ flatpak run --user --command=sh "$app" -ec '
         echo "Agent access leaked into a default run" >&2
         exit 1
     fi'
-printf '%s\n' 'Default confinement and opt-in SSH-agent signing checks passed.'
+bash "$(dirname -- "${BASH_SOURCE[0]}")/check-pi-persistence.sh" "$app"
+printf '%s\n' 'Default confinement, Pi persistence, and opt-in SSH-agent signing checks passed.'
