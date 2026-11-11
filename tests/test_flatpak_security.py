@@ -72,6 +72,7 @@ class FlatpakSecurityTests(unittest.TestCase):
             'finish-args:\n'
             '  - *network\n'
             '  - --persist=.ssh\n'
+            '  - --persist=.pi\n'
             '  - --persist=.codex\n'
             '  - --persist=.claude\n'
             '  - --persist=.t3\n'

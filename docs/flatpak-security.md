@@ -8,9 +8,10 @@ not a security isolation boundary; its binaries and libraries inherit the
 application's effective filesystem, bus, network, and user override grants.
 
 Keep app state persistent using Flatpak's XDG app directories, and preserve
-`--persist=.t3`, `--persist=.codex`, `--persist=.claude`, and `--persist=.ssh` if the launcher
-and application require those paths. Allow individual projects by explicit
-per-directory overrides, not `home` or `host` defaults.
+`--persist=.t3`, `--persist=.pi`, `--persist=.codex`, `--persist=.claude`, and
+`--persist=.ssh` if the launcher and application require those paths. Allow
+individual projects by explicit per-directory overrides, not `home` or `host`
+defaults.
 
 For SSH remotes, prefer the documented
 [opt-in SSH-agent access](../README.md#optional-ssh-agent-access). It lets all
