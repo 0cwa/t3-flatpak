@@ -52,18 +52,20 @@ Project directory access still requires an explicit per-path override.
 
 ## Sandbox runtime tools
 
-The Flatpak bundles sandbox-local `node`, `npm`, `npx`, `corepack`, `git`, OpenSSH client tools, and the `gh`, `glab`, and `tea` hosting CLIs. These are real binaries inside `/app`, not host wrappers. The launcher does not add host `~/.local/bin` to `PATH`. The manifest does not grant host command execution, home access, or SSH-agent access.
+The Flatpak bundles sandbox-local `node`, `npm`, `npx`, `corepack`, `git`, OpenSSH client tools, and the `gh`, `glab`, and `tea` hosting CLIs. These are real binaries inside `/app`, not host wrappers. The launcher adds the app-private `~/.local/bin` to `PATH`, never the host's. The manifest does not grant host command execution, home access, or SSH-agent access.
 
 The launcher configures npm globals and cache under T3 Code app data:
 
 ```bash
 NPM_CONFIG_PREFIX=${XDG_DATA_HOME:-$HOME/.local/share}/npm-global
 NPM_CONFIG_CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/npm
-PATH=$NPM_CONFIG_PREFIX/bin:$HOME/.local/bin:/app/bin:$PATH
+PATH=$HOME/.local/bin:$NPM_CONFIG_PREFIX/bin:/app/bin:$PATH
 ```
 
 Inside the sandbox, `$HOME/.local/bin` is app-private storage
-(`~/.var/app/com.t3tools.t3code/.local/bin`), not the host directory.
+(`~/.var/app/com.t3tools.t3code/.local/bin`), not the host directory. If an
+override such as `--filesystem=home` exposes the host's `~/.local/bin` instead,
+the launcher leaves it off `PATH`.
 
 When installed normally, those resolve under `~/.var/app/com.t3tools.t3code/data/npm-global` and `~/.var/app/com.t3tools.t3code/cache/npm`.
 
