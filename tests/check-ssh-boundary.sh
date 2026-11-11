@@ -53,6 +53,7 @@ context = p['Context']
 sockets = context.get('sockets', '').split(';')
 assert 'ssh-auth' not in sockets, 'SSH agent must be opt-in'
 assert '.ssh' in context.get('persistent', '').split(';'), 'App-private SSH state must persist'
+assert '.local/bin' in context.get('persistent', '').split(';'), 'App-private ~/.local/bin must persist'
 filesystems = context.get('filesystems', '').split(';')
 for grant in filesystems:
     path = grant.split(':', 1)[0]

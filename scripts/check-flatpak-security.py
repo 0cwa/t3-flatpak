@@ -86,6 +86,19 @@ def unsafe_filesystem(value):
     )
 
 
+def persists(permissions, directory):
+    """Whether finish-args map ~/<directory> onto app-private persistent storage."""
+    for index, permission in enumerate(permissions):
+        option, separator, value = permission.partition("=")
+        if option != "--persist":
+            continue
+        if not separator and index + 1 < len(permissions):
+            value = permissions[index + 1]
+        if posixpath.normpath(value) == directory:
+            return True
+    return False
+
+
 def check_permissions(permissions):
     errors = []
     watched = {"--filesystem", "--talk-name", "--own-name", "--socket"}
@@ -126,8 +139,12 @@ def main():
     errors = check_permissions(permissions)
     if re.search(r"\bflatpak-spawn\b", launcher_source):
         errors.append("launcher references flatpak-spawn")
-    if re.search(r"\$HOME/\.local/bin|\$\{HOME\}/\.local/bin", launcher_source):
-        errors.append("launcher references host ~/.local/bin")
+    # Without --persist, ~/.local/bin could only come from a host grant. With it,
+    # the directory is app-private storage that native installers write to.
+    if re.search(r"\$HOME/\.local/bin|\$\{HOME\}/\.local/bin", launcher_source) and not persists(
+        permissions, ".local/bin"
+    ):
+        errors.append("launcher references ~/.local/bin without --persist=.local/bin")
     if errors:
         sys.exit("FAIL:\n" + "\n".join(errors))
     print("PASS: no known default host-command or credential grants in source")
