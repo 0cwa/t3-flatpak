@@ -28,6 +28,12 @@ finish-args:
   - --share=ipc
   - --share=network
   - --env=GTK_USE_PORTAL=1
+  # T3's server-side preview browser (html_preview, headless browser tabs) is
+  # Chrome-for-Testing, which needs unprivileged user namespaces for its own
+  # sandbox. Flatpak's seccomp filter blocks those, so Chrome aborts with "No usable
+  # sandbox" and T3 misreports it as an Ubuntu AppArmor problem. The Flatpak
+  # sandbox already contains the browser, so turn Chrome's inner sandbox off.
+  - --env=T3CODE_SERVER_BROWSER_SANDBOX=0
   - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons # This is used to show the correct cursor on Wayland
   # Without home access, $HOME inside the sandbox is a tmpfs that is discarded
   # on exit. Map app state dirs that ignore XDG onto persistent app storage.

@@ -23,6 +23,21 @@ T3 Code:
 flatpak override --user --device=dri com.t3tools.t3code
 ```
 
+## Preview browser
+
+T3 Code's server-side preview browser (used by `html_preview` and headless
+browser tabs) is a downloaded Chrome that normally starts its own sandbox. Inside
+Flatpak that fails with "No usable sandbox", and T3 Code then wrongly tells you to
+run `t3 browser setup` for AppArmor. The manifest sets
+`T3CODE_SERVER_BROWSER_SANDBOX=0` so Chrome runs inside the Flatpak sandbox
+without its own inner one.
+
+For an older installation, set it locally and restart T3 Code:
+
+```bash
+flatpak override --user --env=T3CODE_SERVER_BROWSER_SANDBOX=0 com.t3tools.t3code
+```
+
 ## Sandbox
 
 The default sandbox grants display, IPC, network, portal-based file picking, and
