@@ -82,6 +82,23 @@ class FlatpakSecurityTests(unittest.TestCase):
         )
         self.check_source("finish-args: []\n", True)
 
+    def test_launcher_local_bin_requires_app_private_persistence(self):
+        launcher = 'export PATH="$HOME/.local/bin:$PATH"\n'
+        for manifest in (
+            "finish-args: [--persist=.local/bin]\n",
+            "finish-args: [--persist=./.local/bin/]\n",
+            "finish-args: [--persist, .local/bin]\n",
+        ):
+            with self.subTest(manifest=manifest):
+                self.check_source(manifest, True, launcher)
+        for manifest in (
+            "finish-args: [--persist=.local]\n",
+            "finish-args: [--persist=.local/bin/tools]\n",
+            'finish-args: [--persist=.local/bin, "--filesystem=~/.local/bin"]\n',
+        ):
+            with self.subTest(manifest=manifest):
+                self.check_source(manifest, False, launcher)
+
     def test_known_launcher_bridges_remain_blocked(self):
         for launcher in (
             "#!/bin/bash\nflatpak-spawn --host bash\n",

@@ -59,8 +59,11 @@ The launcher configures npm globals and cache under T3 Code app data:
 ```bash
 NPM_CONFIG_PREFIX=${XDG_DATA_HOME:-$HOME/.local/share}/npm-global
 NPM_CONFIG_CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/npm
-PATH=$NPM_CONFIG_PREFIX/bin:/app/bin:$PATH
+PATH=$NPM_CONFIG_PREFIX/bin:$HOME/.local/bin:/app/bin:$PATH
 ```
+
+Inside the sandbox, `$HOME/.local/bin` is app-private storage
+(`~/.var/app/com.t3tools.t3code/.local/bin`), not the host directory.
 
 When installed normally, those resolve under `~/.var/app/com.t3tools.t3code/data/npm-global` and `~/.var/app/com.t3tools.t3code/cache/npm`.
 
@@ -112,6 +115,17 @@ The helper only accepts `codex`, `claude`, or `opencode`, and installs the
 mapped npm package into the same app-owned npm prefix used by the launcher.
 Grok and Cursor agent installs are intentionally not supported by this helper.
 
+Claude Code can also be installed with Anthropic's native installer, which
+T3 Code suggests during setup. Run it in a T3 Code terminal:
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+It keeps versions in `$XDG_DATA_HOME/claude/versions` and its `claude` launcher in
+the app-private `~/.local/bin`. Both persist, so `claude update` and T3 Code's
+update button switch to the new version.
+
 Installing a provider downloads executable code into the T3 Code Flatpak
 sandbox. That code can access T3 Code app data and any project paths explicitly
 mounted into the Flatpak later. It does not gain broad host filesystem access
@@ -130,6 +144,7 @@ that app directory:
 | `~/.t3` | `~/.var/app/com.t3tools.t3code/.t3` | T3 Code settings, keybindings, threads (`state.sqlite`), login tokens, secrets, worktrees | `--persist=.t3` |
 | `~/.codex` | `~/.var/app/com.t3tools.t3code/.codex` | Codex CLI config and auth | `--persist=.codex` |
 | `~/.claude` | `~/.var/app/com.t3tools.t3code/.claude` | Claude Code config, including `.claude.json` | `--persist=.claude` + `CLAUDE_CONFIG_DIR` |
+| `~/.local/bin` | `~/.var/app/com.t3tools.t3code/.local/bin` | launchers from native installers such as Claude Code's; not the host `~/.local/bin` | `--persist=.local/bin` |
 | `~/.ssh` | `~/.var/app/com.t3tools.t3code/.ssh` | sandbox-local SSH configuration and verified `known_hosts`; not the host SSH directory | `--persist=.ssh` |
 | `$XDG_CONFIG_HOME/git/config` | `~/.var/app/com.t3tools.t3code/config/git/config` | `git config --global` settings | launcher creates the file so git prefers it over `~/.gitconfig` |
 | `$HISTFILE` | `~/.var/app/com.t3tools.t3code/.local/state/bash/history` | terminal shell history | launcher sets `HISTFILE` |

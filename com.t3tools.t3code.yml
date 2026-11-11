@@ -42,6 +42,9 @@ finish-args:
   - --persist=.codex # Codex CLI
   - --persist=.claude # Claude Code (startt3code points CLAUDE_CONFIG_DIR here)
   - --persist=.ssh # sandbox-local SSH configuration and verified host keys
+  # App-private ~/.local/bin, not the host's. Claude's native installer (which
+  # T3 Code suggests) keeps its launcher symlink here and repoints it on update.
+  - --persist=.local/bin
 
 modules:
   - name: nodejs

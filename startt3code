@@ -5,11 +5,13 @@ export NPM_CONFIG_PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/npm-global"
 export NPM_CONFIG_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/npm"
 # Flatpak mounts optional tool extensions but does not add their commands to
 # PATH. Keep npm and bundled commands ahead of extension commands.
+# ~/.local/bin is the app-private --persist=.local/bin directory, not the
+# host's. Native installers (Claude Code's install.sh) put their launchers there.
 tools_path=""
 for tool_bin in /app/tools/*/bin; do
     [[ -d "$tool_bin" ]] && tools_path+=":$tool_bin"
 done
-export PATH="$NPM_CONFIG_PREFIX/bin:/app/bin$tools_path:$PATH"
+export PATH="$NPM_CONFIG_PREFIX/bin:$HOME/.local/bin:/app/bin$tools_path:$PATH"
 unset tools_path tool_bin
 
 mkdir -p "$NPM_CONFIG_PREFIX" "$NPM_CONFIG_CACHE"
