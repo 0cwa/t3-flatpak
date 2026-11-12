@@ -160,7 +160,7 @@ try {
   const measured = await runPromise(provide(measureHtmlHeights({ ...input, widths: [400, 700] }), previewTestNodeServices));
   assert.equal(measured.length, 2);
   results.html = { rendering: true, width: Buffer.from(capture.png, "base64").readUInt32BE(16), contentHeight: capture.contentHeight, loopbackRequests: blockedRequests, fileScriptDenied: true, webRtcDisabled: true, measurement: true };
-  await assert.rejects(runPromise(provide(captureHtmlScreenshot({ ...input, noSandbox: false }), previewTestNodeServices)), (error) => /No usable sandbox/.test(error.output ?? ""));
+  await assert.rejects(runPromise(provide(captureHtmlScreenshot({ ...input, noSandbox: false }), previewTestNodeServices)), (error) => /No usable sandbox|Running as root without --no-sandbox/.test(error.output ?? ""));
   results.failClosed = true;
   results.passed = true;
 } catch (error) {

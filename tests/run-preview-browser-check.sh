@@ -2,6 +2,10 @@
 # Run through agent-heavy on a Flatpak-capable host. The parent has an empty home.
 set -euo pipefail
 
+if [[ -z ${DBUS_SESSION_BUS_ADDRESS:-} ]]; then
+    exec dbus-run-session -- bash "$0" "$@"
+fi
+
 tests_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 scratch_base=${T3_TEST_SCRATCH:-$HOME/agent-scratch/t3-flatpak}
 mkdir -p -- "$scratch_base"
