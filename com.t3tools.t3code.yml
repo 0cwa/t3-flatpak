@@ -30,9 +30,9 @@ finish-args:
   - --env=GTK_USE_PORTAL=1
   # T3's server-side preview browser (html_preview, headless browser tabs) is
   # Chrome-for-Testing, which needs unprivileged user namespaces for its own
-  # sandbox. Flatpak's seccomp filter blocks those, so Chrome aborts with "No usable
-  # sandbox" and T3 misreports it as an Ubuntu AppArmor problem. The Flatpak
-  # sandbox already contains the browser, so turn Chrome's inner sandbox off.
+  # sandbox. Flatpak's seccomp filter blocks those. Both preview launch sites
+  # use our reduced Flatpak child sandbox, hiding app credentials from the whole
+  # browser. Chrome's renderer sandbox remains disabled inside that child.
   - --env=T3CODE_SERVER_BROWSER_SANDBOX=0
   - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons # This is used to show the correct cursor on Wayland
   # Without home access, $HOME inside the sandbox is a tmpfs that is discarded
@@ -177,6 +177,9 @@ modules:
         done
       - install -D squashfs-root/t3code.desktop /app/share/applications/com.t3tools.t3code.desktop
       - install -Dm755 startt3code /app/bin/startt3code
+      - python3 patch-preview-browser.py squashfs-root/resources/app.asar
+      - install -Dm644 preview/adapter.mjs preview/paths.mjs preview/supervisor.mjs -t /app/lib/t3-preview/
+      - install -Dm755 preview/launch.mjs /app/lib/t3-preview/launch.mjs
       - install -d /app/tools
       - install -Dm755 t3code-install-provider /app/bin/t3code-install-provider
       - install -D com.t3tools.t3code.metainfo.xml -t /app/share/metainfo/
@@ -185,6 +188,11 @@ modules:
     sources:
       - type: file
         path: startt3code
+      - type: file
+        path: scripts/patch-preview-browser.py
+      - type: dir
+        path: preview
+        dest: preview
       - type: file
         path: t3code-install-provider
 

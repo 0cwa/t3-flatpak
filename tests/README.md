@@ -1,5 +1,11 @@
 # Tool extension integration check
 
+The installed check also runs the preview browser regression. It tests both
+packaged server browser paths in a disposable parent with an empty home and
+no host-command permission, using the exact pinned Chrome and bundled
+Playwright. See [the security notes](../docs/flatpak-security.md) for standalone
+execution and reuse of an existing browser download.
+
 Run these checks on a host with Flatpak and flatpak-builder under a disposable
 OS account or ephemeral CI container. A separate Flatpak installation still
 shares `~/.var/app` state; do not use an account with real T3 Code data or
