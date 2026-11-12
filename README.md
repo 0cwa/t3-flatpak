@@ -29,14 +29,22 @@ T3 Code's server-side preview browser (used by `html_preview` and headless
 browser tabs) is a downloaded Chrome that normally starts its own sandbox. Inside
 Flatpak that fails with "No usable sandbox", and T3 Code then wrongly tells you to
 run `t3 browser setup` for AppArmor. The manifest sets
-`T3CODE_SERVER_BROWSER_SANDBOX=0` so Chrome runs inside the Flatpak sandbox
-without its own inner one.
+`T3CODE_SERVER_BROWSER_SANDBOX=0` so Chrome runs without its own inner sandbox.
+Both server-side preview paths launch in a separate reduced Flatpak sandbox
+with only the browser resources, selected profile, and file-transfer staging
+directory exposed. T3/provider credentials and project directories are hidden
+from that browser. Network access remains shared, including local development
+servers; the HTML renderer also retains its public-only proxy restrictions.
 
 For an older installation, set it locally and restart T3 Code:
 
 ```bash
 flatpak override --user --env=T3CODE_SERVER_BROWSER_SANDBOX=0 com.t3tools.t3code
 ```
+
+That override alone does not add the separate browser sandbox to older builds.
+Setting the value to `1` requires Chrome's own sandbox as well; on installations
+that block user namespaces, previews fail rather than retrying without isolation.
 
 ## Sandbox
 
