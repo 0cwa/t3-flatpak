@@ -13,6 +13,14 @@ test_root=$(mktemp -d "$scratch_base/preview-check.XXXXXXXX")
 trap 'rm -rf -- "$test_root"' EXIT
 app_location=$(flatpak info --user --show-location com.t3tools.t3code)
 cp -a --reflink=auto "$app_location/files" "$test_root/app"
+
+# Local development can test the packaging delta against an existing AppImage.
+if [[ ${T3_PREVIEW_APPLY_PATCH:-0} == 1 ]]; then
+    python3 "$tests_dir/../scripts/patch-preview-browser.py" "$test_root/app/bin/t3code/resources/app.asar"
+    install -d "$test_root/app/lib/t3-preview"
+    install -m644 "$tests_dir"/../preview/{adapter,paths,supervisor}.mjs "$test_root/app/lib/t3-preview/"
+    install -m755 "$tests_dir/../preview/launch.mjs" "$test_root/app/lib/t3-preview/"
+fi
 python3 - "$test_root/app/bin/t3code/resources/app.asar" "$tests_dir" <<'PY'
 import importlib.util
 from pathlib import Path
@@ -35,14 +43,6 @@ assert patch.ANDROID_MISSING_SDK_BEFORE not in server
 assert "isolatedPlaywright" in server and "stageUploads" in server
 print("Installed Devices error includes Android setup and diagnostics commands.")
 PY
-
-# Local development can test the packaging delta against an existing AppImage.
-if [[ ${T3_PREVIEW_APPLY_PATCH:-0} == 1 ]]; then
-    python3 "$tests_dir/../scripts/patch-preview-browser.py" "$test_root/app/bin/t3code/resources/app.asar"
-    install -d "$test_root/app/lib/t3-preview"
-    install -m644 "$tests_dir"/../preview/{adapter,paths,supervisor}.mjs "$test_root/app/lib/t3-preview/"
-    install -m755 "$tests_dir/../preview/launch.mjs" "$test_root/app/lib/t3-preview/"
-fi
 python3 "$tests_dir/instrument-preview-browser.py" "$test_root/app/bin/t3code/resources/app.asar"
 cp "$tests_dir/check-preview-browser.mjs" "$test_root/check.mjs"
 mkdir "$test_root/state"
