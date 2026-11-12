@@ -17,6 +17,7 @@ import tempfile
 import urllib.request
 import urllib.error
 import uuid
+import xml.etree.ElementTree as ET
 import zipfile
 
 
@@ -142,6 +143,11 @@ def extract_tar_safely(archive, destination):
             else:
                 raise SetupError(f"Java archive contains an unsupported entry: {path}")
 
+        link_paths = {path for _, path in links}
+        for member, path in files + directories + links:
+            if any(parent in link_paths for parent in path.parents):
+                raise SetupError(f"Java archive path has a symlink ancestor: {path}")
+
         # Create all ordinary paths before links, so an archive link cannot redirect
         # a later file write. O_NOFOLLOW and O_EXCL add a second boundary.
         for _, path in sorted(directories, key=lambda item: len(item[1].parts)):
@@ -252,6 +258,19 @@ def _check_explicit_overrides(root, names=("ANDROID_HOME", "ANDROID_SDK_ROOT", "
             )
 
 
+def _revision_tuple(value, package_id):
+    if not re.fullmatch(r"\d+(?:\.\d+)*", value or ""):
+        raise SetupError(f"SDK package revision is invalid: {package_id}")
+    parts = [int(part) for part in value.split(".")]
+    while len(parts) > 1 and parts[-1] == 0:
+        parts.pop()
+    return tuple(parts)
+
+
+def _xml_local_name(element):
+    return element.tag.rsplit("}", 1)[-1]
+
+
 def _package_metadata(package_dir, package_id):
     metadata = package_dir / "source.properties"
     if not metadata.is_file():
@@ -261,8 +280,46 @@ def _package_metadata(package_dir, package_id):
         key, separator, value = line.partition("=")
         if separator:
             properties[key.strip()] = value.strip()
-    if properties.get("Pkg.Path") != package_id or not properties.get("Pkg.Revision"):
+    source_path = properties.get("Pkg.Path")
+    source_revision = properties.get("Pkg.Revision")
+    if not source_revision:
         raise SetupError(f"SDK package metadata is incomplete or mismatched: {package_id}")
+    if source_path and source_path != package_id:
+        raise SetupError(f"SDK package metadata is incomplete or mismatched: {package_id}")
+    source_revision = _revision_tuple(source_revision, package_id)
+
+    package_xml = package_dir / "package.xml"
+    if not package_xml.is_file():
+        if source_path == package_id:
+            return
+        raise SetupError(f"SDK package metadata has no authoritative package path: {package_id}")
+    try:
+        document = ET.parse(package_xml).getroot()
+    except ET.ParseError as error:
+        raise SetupError(f"SDK package metadata XML is invalid: {package_id}") from error
+    local_packages = [
+        element for element in document.iter()
+        if _xml_local_name(element) == "localPackage"
+    ]
+    if len(local_packages) != 1 or local_packages[0].get("path") != package_id:
+        raise SetupError(f"SDK package metadata is incomplete or mismatched: {package_id}")
+    revisions = [
+        element for element in local_packages[0]
+        if _xml_local_name(element) == "revision"
+    ]
+    if len(revisions) != 1:
+        raise SetupError(f"SDK package metadata has no authoritative revision: {package_id}")
+    revision_parts = {
+        _xml_local_name(element): (element.text or "").strip()
+        for element in revisions[0]
+    }
+    if not revision_parts.get("major"):
+        raise SetupError(f"SDK package metadata has no authoritative revision: {package_id}")
+    xml_revision = ".".join(
+        (revision_parts.get(name) or "0") for name in ("major", "minor", "micro")
+    )
+    if source_revision != _revision_tuple(xml_revision, package_id):
+        raise SetupError(f"SDK package source and XML revisions conflict: {package_id}")
 
 
 def _sdkmanager_run(command, env, accept_licenses, runner):
@@ -286,6 +343,76 @@ def _atomic_current(link, target):
         os.replace(temporary, link)
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _current_target(link):
+    if not link.is_symlink():
+        return None
+    target = Path(os.readlink(link))
+    if not target.is_absolute():
+        target = link.parent / target
+    return Path(os.path.abspath(target))
+
+
+def _restore_current(link, previous_target):
+    current_target = _current_target(link)
+    if current_target == previous_target:
+        return
+    if previous_target is None:
+        if os.path.lexists(link):
+            if not link.is_symlink():
+                raise SetupError(f"cannot roll back managed current path: {link}")
+            link.unlink()
+        return
+    _atomic_current(link, previous_target)
+
+
+def _new_generation(directory, prefix):
+    while True:
+        generation = directory / f"{prefix}-{uuid.uuid4().hex[:10]}"
+        if not os.path.lexists(generation):
+            return generation
+
+
+def _remove_generation(generation):
+    if generation.is_symlink():
+        generation.unlink()
+    elif generation.is_dir():
+        shutil.rmtree(generation)
+    else:
+        generation.unlink(missing_ok=True)
+
+
+def _rollback_generations(previous_targets, generations):
+    failures = []
+    for link, previous_target in previous_targets:
+        try:
+            _restore_current(link, previous_target)
+        except BaseException as error:
+            failures.append(f"restore {link}: {error}")
+    active_targets = set()
+    active_state_unknown = False
+    for link, _ in previous_targets:
+        try:
+            target = _current_target(link)
+            if target is not None:
+                active_targets.add(target)
+        except BaseException as error:
+            failures.append(f"inspect {link}: {error}")
+            active_state_unknown = True
+    for generation in generations:
+        if (
+            active_state_unknown
+            or generation is None
+            or Path(os.path.abspath(generation)) in active_targets
+        ):
+            continue
+        try:
+            _remove_generation(generation)
+        except BaseException as error:
+            failures.append(f"remove unactivated generation {generation}: {error}")
+    if failures:
+        raise SetupError("activation rollback was incomplete: " + "; ".join(failures))
 
 
 @contextmanager
@@ -328,13 +455,24 @@ def _prepare_java(stage, downloader):
     return java_home
 
 
-def _promote_java(java_home, java_versions, root):
+def _promote_java(java_home, java_versions, root, created_generations=None):
     java_versions.mkdir(parents=True, exist_ok=True)
-    generation = java_versions / f"microsoft-jdk-{JAVA_VERSION}-{uuid.uuid4().hex[:10]}"
+    generation = _new_generation(java_versions, f"microsoft-jdk-{JAVA_VERSION}")
+    if created_generations is not None:
+        created_generations.append(generation)
+    link = root / "java/current"
+    previous_target = _current_target(link)
     staged_java = java_home.parent.parent / "java-install"
-    os.replace(java_home, staged_java)
-    os.replace(staged_java, generation)
-    _atomic_current(root / "java/current", generation)
+    try:
+        os.replace(java_home, staged_java)
+        os.replace(staged_java, generation)
+        _atomic_current(link, generation)
+    except BaseException as error:
+        try:
+            _rollback_generations(((link, previous_target),), (generation,))
+        except SetupError as rollback_error:
+            raise SetupError(f"Java activation failed and {rollback_error}") from error
+        raise
     return generation
 
 
@@ -408,7 +546,7 @@ def setup_android(system_image, accept_licenses=False, root=None, downloader=Non
             (sdk_stage / "cmdline-tools").mkdir()
             os.replace(packaged_tools, sdk_stage / "cmdline-tools/latest")
 
-            sdk_generation = sdk_versions / f"android-sdk-{TOOLS_VERSION}-{uuid.uuid4().hex[:10]}"
+            sdk_generation = _new_generation(sdk_versions, f"android-sdk-{TOOLS_VERSION}")
             sdkmanager = sdk_stage / "cmdline-tools/latest/bin/sdkmanager"
             java_env = os.environ.copy()
             java_env["JAVA_HOME"] = str(unpacked_java_home)
@@ -460,9 +598,27 @@ def setup_android(system_image, accept_licenses=False, root=None, downloader=Non
 
             # Keep prior generations intact. Only a same-filesystem rename and
             # symlink replacement change the active SDK or Java installation.
-            os.replace(sdk_stage, sdk_generation)
-            _promote_java(unpacked_java_home, java_versions, root)
-            _atomic_current(sdk_root / "current", sdk_generation)
+            sdk_link = sdk_root / "current"
+            java_link = java_root / "current"
+            previous_sdk = _current_target(sdk_link)
+            previous_java = _current_target(java_link)
+            java_generations = []
+            try:
+                os.replace(sdk_stage, sdk_generation)
+                _promote_java(
+                    unpacked_java_home, java_versions, root,
+                    created_generations=java_generations,
+                )
+                _atomic_current(sdk_link, sdk_generation)
+            except BaseException as error:
+                try:
+                    _rollback_generations(
+                        ((sdk_link, previous_sdk), (java_link, previous_java)),
+                        (sdk_generation, *java_generations),
+                    )
+                except SetupError as rollback_error:
+                    raise SetupError(f"SDK activation failed and {rollback_error}") from error
+                raise
 
     print(f"Android SDK ready: {sdk_root / 'current'}")
     print(f"Java ready: {java_root / 'current'}")
@@ -474,6 +630,9 @@ def _which_java(environ):
     java_home = environ.get("JAVA_HOME")
     if java_home:
         return Path(java_home) / "bin/java"
+    private = data_root(environ) / "java/current/bin/java"
+    if private.is_file() and os.access(private, os.X_OK):
+        return private
     java = shutil.which("java", path=environ.get("PATH"))
     return Path(java) if java else None
 
@@ -539,6 +698,8 @@ def diagnose(environ=None, output=None):
     else:
         print("KVM: unavailable; Flatpak needs the narrow --device=kvm permission for acceleration", file=output)
 
+    print("Diagnostics command:", file=output)
+    print("  flatpak run --command=t3code-android-diagnostics com.t3tools.t3code", file=output)
     print("Setup command:", file=output)
     print(
         "  flatpak run --command=t3code-android-setup com.t3tools.t3code "

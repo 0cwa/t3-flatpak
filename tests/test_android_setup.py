@@ -16,11 +16,27 @@ import tempfile
 import threading
 import time
 import unittest
+import xml.etree.ElementTree as ET
 import zipfile
 from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
+TEST_SCRATCH_ROOT = (Path.home() / "agent-scratch/t3-flatpak/android-support/test-runs").resolve()
+TEST_SCRATCH_ROOT.mkdir(parents=True, exist_ok=True)
+assert TEST_SCRATCH_ROOT.is_relative_to((Path.home() / "agent-scratch").resolve())
+_process_data_root = TEST_SCRATCH_ROOT / "process-defaults"
+os.environ.update({
+    "HOME": str(_process_data_root / "home"),
+    "XDG_DATA_HOME": str(_process_data_root / "data"),
+    "XDG_CONFIG_HOME": str(_process_data_root / "config"),
+    "XDG_CACHE_HOME": str(_process_data_root / "cache"),
+    "XDG_STATE_HOME": str(_process_data_root / "state"),
+    "ANDROID_USER_HOME": str(_process_data_root / "data/android-user"),
+    "ANDROID_AVD_HOME": str(_process_data_root / "data/android-user/avd"),
+})
+assert Path(os.environ["XDG_DATA_HOME"]).resolve().is_relative_to(TEST_SCRATCH_ROOT)
+assert Path(os.environ["ANDROID_USER_HOME"]).resolve().is_relative_to(TEST_SCRATCH_ROOT)
 MODULE_PATH = ROOT / "scripts/android_setup.py"
 SPEC = importlib.util.spec_from_file_location("android_setup", MODULE_PATH)
 android_setup = importlib.util.module_from_spec(SPEC)
@@ -55,9 +71,44 @@ class QuietHandler(http.server.BaseHTTPRequestHandler):
 
 class AndroidSetupTests(unittest.TestCase):
     def setUp(self):
-        self.temporary = tempfile.TemporaryDirectory(prefix="t3-android-tests-")
+        self.temporary = tempfile.TemporaryDirectory(
+            prefix="t3-android-tests-", dir=TEST_SCRATCH_ROOT
+        )
         self.addCleanup(self.temporary.cleanup)
-        self.root = Path(self.temporary.name)
+        self.root = Path(self.temporary.name).resolve()
+        self.assertTrue(self.root.is_relative_to(TEST_SCRATCH_ROOT))
+        self.environment = mock.patch.dict(os.environ, {
+            "HOME": str(self.root / "home"),
+            "XDG_DATA_HOME": str(self.root / "data"),
+            "XDG_CONFIG_HOME": str(self.root / "config"),
+            "XDG_CACHE_HOME": str(self.root / "cache"),
+            "XDG_STATE_HOME": str(self.root / "state"),
+            "ANDROID_USER_HOME": str(self.root / "data/android-user"),
+            "ANDROID_AVD_HOME": str(self.root / "data/android-user/avd"),
+            "PATH": "/usr/bin:/bin",
+        }, clear=True)
+        self.environment.start()
+        self.addCleanup(self.environment.stop)
+        self.assertTrue(android_setup.data_root().resolve().is_relative_to(self.root))
+
+    def scratch_path(self, *parts):
+        path = self.root.joinpath(*parts)
+        self.assertTrue(path.resolve().is_relative_to(self.root))
+        return path
+
+    def android_root(self):
+        return self.scratch_path("data", "t3code", "android")
+
+    @staticmethod
+    def make_package_xml(package_id, revision):
+        namespace = "http://schemas.android.com/repository/android/common/02"
+        root = ET.Element(f"{{{namespace}}}repository")
+        package = ET.SubElement(root, f"{{{namespace}}}localPackage", path=package_id)
+        xml_revision = ET.SubElement(package, f"{{{namespace}}}revision")
+        parts = revision.split(".")
+        for key, value in zip(("major", "minor", "micro"), parts + ["0", "0"]):
+            ET.SubElement(xml_revision, f"{{{namespace}}}{key}").text = value
+        return ET.tostring(root, encoding="unicode")
 
     @staticmethod
     def make_java_tar(path, java_script=None, extra=None):
@@ -116,9 +167,8 @@ class AndroidSetupTests(unittest.TestCase):
         ):
             yield
 
-    @staticmethod
     def fake_sdkmanager(
-        fail_install=False, grant_license=True, install_files=True,
+        self, fail_install=False, grant_license=True, install_files=True,
         metadata_correct=True, image_payload=True,
     ):
         calls = []
@@ -134,16 +184,24 @@ class AndroidSetupTests(unittest.TestCase):
             if "--install" in command:
                 sdk = Path(command[1].split("=", 1)[1])
                 if install_files:
-                    for relative, package_id in (
-                        ("platform-tools", "platform-tools"),
-                        ("emulator", "emulator"),
-                        ("system-images/android-35/google_apis/x86_64", "system-images;android-35;google_apis;x86_64"),
+                    for relative, package_id, revision, source_path in (
+                        ("platform-tools", "platform-tools", "37.0.1", None),
+                        ("emulator", "emulator", "37.2.13", "emulator"),
+                        (
+                            "system-images/android-35/google_apis/x86_64",
+                            "system-images;android-35;google_apis;x86_64",
+                            "9", None,
+                        ),
                     ):
                         directory = sdk / relative
                         directory.mkdir(parents=True, exist_ok=True)
                         reported_id = package_id if metadata_correct else "wrong-package"
-                        (directory / "source.properties").write_text(
-                            f"Pkg.Path={reported_id}\nPkg.Revision=1.0\n"
+                        properties = [f"Pkg.Revision={revision}"]
+                        if source_path or not metadata_correct:
+                            properties.append(f"Pkg.Path={reported_id if not metadata_correct else source_path}")
+                        (directory / "source.properties").write_text("\n".join(properties) + "\n")
+                        (directory / "package.xml").write_text(
+                            self.make_package_xml(reported_id, revision)
                         )
                     if image_payload:
                         image = sdk / "system-images/android-35/google_apis/x86_64/system.img"
@@ -194,6 +252,48 @@ class AndroidSetupTests(unittest.TestCase):
             )
         self.assertFalse(destination.exists())
 
+    def test_setup_wrapper_routes_default_setup_and_private_java_arguments(self):
+        bin_dir = self.scratch_path("fake-bin")
+        bin_dir.mkdir()
+        capture = self.scratch_path("wrapper-argv")
+        python = bin_dir / "python3"
+        python.write_text('#!/bin/sh\nprintf "%s\\0" "$@" > "$T3_ARGV_CAPTURE"\n')
+        python.chmod(0o755)
+        env = {"PATH": str(bin_dir), "T3_ARGV_CAPTURE": str(capture)}
+
+        def invoke(*arguments):
+            result = subprocess.run(
+                ["/bin/bash", str(ROOT / "t3code-android-setup"), *arguments],
+                env=env, capture_output=True, check=False,
+            )
+            self.assertEqual(0, result.returncode, result.stderr.decode(errors="replace"))
+            return capture.read_bytes().rstrip(b"\0").decode().split("\0")
+
+        self.assertEqual(
+            [
+                "/app/lib/t3-android/android_setup.py", "setup", "--system-image",
+                "system-images;android-35;google_apis;x86_64",
+            ],
+            invoke("--system-image", "system-images;android-35;google_apis;x86_64"),
+        )
+        self.assertEqual(
+            ["/app/lib/t3-android/android_setup.py", "install-java", "--help"],
+            invoke("install-java", "--help"),
+        )
+        self.assertEqual(
+            ["/app/lib/t3-android/android_setup.py", "setup", "--help"],
+            invoke("setup", "--help"),
+        )
+        result = subprocess.run(
+            ["/bin/bash", str(ROOT / "t3code-android-diagnostics")],
+            env=env, capture_output=True, check=False,
+        )
+        self.assertEqual(0, result.returncode, result.stderr.decode(errors="replace"))
+        self.assertEqual(
+            ["/app/lib/t3-android/android_setup.py", "diagnostics"],
+            capture.read_bytes().rstrip(b"\0").decode().split("\0"),
+        )
+
     def test_safe_extractors_reject_traversal_links_and_special_entries(self):
         tar_path = self.root / "bad.tar.gz"
         self.make_java_tar(
@@ -203,6 +303,22 @@ class AndroidSetupTests(unittest.TestCase):
         with self.assertRaisesRegex(android_setup.SetupError, "escapes"):
             android_setup.extract_tar_safely(tar_path, self.root / "tar-out")
         self.assertFalse((self.root.parent / "escape").exists())
+
+        nested_links = self.scratch_path("nested-links.tar.gz")
+        self.make_java_tar(
+            nested_links,
+            extra=[
+                ("a", "symlink", "."),
+                ("a/b", "symlink", ".."),
+                ("a/b/c", "symlink", ".."),
+                ("a/b/c/outside-marker", "symlink", "."),
+            ],
+        )
+        nested_destination = self.scratch_path("chain-stage", "dest")
+        outside_marker = self.root / "outside-marker"
+        with self.assertRaisesRegex(android_setup.SetupError, "symlink ancestor"):
+            android_setup.extract_tar_safely(nested_links, nested_destination)
+        self.assertFalse(os.path.lexists(outside_marker), "archive created a link outside its stage")
 
         link_tar = self.root / "bad-link.tar.gz"
         self.make_java_tar(link_tar, extra=[("jdk-fixture/out", "symlink", "../../../outside")])
@@ -224,7 +340,7 @@ class AndroidSetupTests(unittest.TestCase):
 
     def test_explicit_setup_installs_pinned_tools_and_sdkmanager_packages(self):
         run, calls = self.fake_sdkmanager()
-        root = self.root / "data/t3code/android"
+        root = self.android_root()
         with self.local_downloads():
             with mock.patch.dict(os.environ, {
                 "ANDROID_USER_HOME": str(root / "user"),
@@ -253,12 +369,57 @@ class AndroidSetupTests(unittest.TestCase):
         self.assertEqual(str(root / "user/avd"), calls[0][1]["ANDROID_AVD_HOME"])
         self.assertTrue((root / "user/avd").is_dir())
         self.assertTrue((active_sdk / "licenses/android-sdk-license").is_file())
-        self.assertIn("Pkg.Path=emulator", (active_sdk / "emulator/source.properties").read_text())
+        platform_tools_metadata = (active_sdk / "platform-tools/source.properties").read_text()
+        self.assertNotIn("Pkg.Path=", platform_tools_metadata)
         self.assertIn(
-            "Pkg.Path=system-images;android-35;google_apis;x86_64",
-            (active_sdk / "system-images/android-35/google_apis/x86_64/source.properties").read_text(),
+            'path="platform-tools"',
+            (active_sdk / "platform-tools/package.xml").read_text(),
+        )
+        self.assertIn(
+            'path="system-images;android-35;google_apis;x86_64"',
+            (active_sdk / "system-images/android-35/google_apis/x86_64/package.xml").read_text(),
         )
         self.assertEqual([], list(root.glob(".setup-*")))
+
+    def test_package_metadata_reconciles_source_properties_and_xml(self):
+        package_dir = self.scratch_path("platform-tools")
+        package_dir.mkdir()
+        (package_dir / "source.properties").write_text("Pkg.Revision=37.0.1\n")
+        (package_dir / "package.xml").write_text(
+            self.make_package_xml("platform-tools", "37.0.1")
+        )
+        android_setup._package_metadata(package_dir, "platform-tools")
+
+        (package_dir / "source.properties").write_text(
+            "Pkg.Path=emulator\nPkg.Revision=37.0.1\n"
+        )
+        with self.assertRaisesRegex(android_setup.SetupError, "mismatched"):
+            android_setup._package_metadata(package_dir, "platform-tools")
+
+        (package_dir / "source.properties").write_text(
+            "Pkg.Path=platform-tools\nPkg.Revision=37.0.1\n"
+        )
+        (package_dir / "package.xml").write_text(
+            self.make_package_xml("emulator", "37.0.1")
+        )
+        with self.assertRaisesRegex(android_setup.SetupError, "mismatched"):
+            android_setup._package_metadata(package_dir, "platform-tools")
+
+        (package_dir / "source.properties").write_text(
+            "Pkg.Path=platform-tools\nPkg.Revision=37.0.2\n"
+        )
+        (package_dir / "package.xml").write_text(
+            self.make_package_xml("platform-tools", "37.0.1")
+        )
+        with self.assertRaisesRegex(android_setup.SetupError, "revisions conflict"):
+            android_setup._package_metadata(package_dir, "platform-tools")
+
+        fallback_dir = self.scratch_path("source-only-package")
+        fallback_dir.mkdir()
+        (fallback_dir / "source.properties").write_text(
+            "Pkg.Path=cmdline-tools;23.0\nPkg.Revision=23.0\n"
+        )
+        android_setup._package_metadata(fallback_dir, "cmdline-tools;23.0")
 
     def test_license_review_without_consent_requires_a_terminal_before_download(self):
         with self.local_downloads():
@@ -266,7 +427,7 @@ class AndroidSetupTests(unittest.TestCase):
                 with self.assertRaisesRegex(android_setup.SetupError, "needs a terminal"):
                     android_setup.setup_android(
                         "system-images;android-35;google_apis;x86_64",
-                        root=self.root / "data/t3code/android",
+                        root=self.android_root(),
                     )
         self.assertFalse((self.root / "data/t3code/android/sdk/current").exists())
 
@@ -277,12 +438,12 @@ class AndroidSetupTests(unittest.TestCase):
                     with self.assertRaisesRegex(android_setup.SetupError, "licenses were not accepted"):
                         android_setup.setup_android(
                             "system-images;android-35;google_apis;x86_64",
-                            root=self.root / "data/t3code/android",
+                            root=self.android_root(),
                         )
         self.assertFalse((self.root / "data/t3code/android/sdk/current").exists())
 
     def test_sdkmanager_exit_zero_without_license_or_package_evidence_fails(self):
-        root = self.root / "data/t3code/android"
+        root = self.android_root()
         old_sdk = root / "sdk/versions/known-good"
         old_java = root / "java/versions/known-good"
         old_sdk.mkdir(parents=True)
@@ -330,7 +491,7 @@ class AndroidSetupTests(unittest.TestCase):
         external_sdk = self.root / "host-sdk"
         external_sdk.mkdir()
         (external_sdk / "marker").write_text("read-only fixture")
-        private = self.root / "data/t3code/android"
+        private = self.android_root()
         with mock.patch.dict(os.environ, {"ANDROID_HOME": str(external_sdk)}):
             with self.local_downloads():
                 with self.assertRaisesRegex(android_setup.SetupError, "will not modify"):
@@ -345,7 +506,7 @@ class AndroidSetupTests(unittest.TestCase):
         external_sdk.mkdir()
         marker = external_sdk / "marker"
         marker.write_text("read-only fixture")
-        private = self.root / "data/t3code/android"
+        private = self.android_root()
         with mock.patch.dict(os.environ, {"ANDROID_HOME": str(external_sdk)}, clear=True):
             with self.local_downloads():
                 android_setup.install_private_java(root=private)
@@ -365,12 +526,12 @@ class AndroidSetupTests(unittest.TestCase):
             android_setup.setup_android(
                 "system-images;android-35;google_apis;arm64-v8a",
                 accept_licenses=True,
-                root=self.root / "data/t3code/android",
+                root=self.android_root(),
             )
-        self.assertFalse((self.root / "data/t3code/android").exists())
+        self.assertFalse(self.android_root().exists())
 
     def test_checksum_and_sdkmanager_failures_keep_active_generations(self):
-        root = self.root / "data/t3code/android"
+        root = self.android_root()
         old_sdk = root / "sdk/versions/known-good"
         old_java = root / "java/versions/known-good"
         old_sdk.mkdir(parents=True)
@@ -397,8 +558,136 @@ class AndroidSetupTests(unittest.TestCase):
         self.assertEqual("old Java", (root / "java/current/marker").read_text())
         self.assertEqual([], list(root.glob(".setup-*")))
 
+    def test_setup_rolls_back_every_generation_and_pointer_promotion_boundary(self):
+        boundaries = (
+            "sdk-generation",
+            "java-staging",
+            "java-generation",
+            "java-current",
+            "sdk-current",
+        )
+        for boundary in boundaries:
+            with self.subTest(boundary=boundary):
+                root = self.scratch_path(boundary, "data", "t3code", "android")
+                old_sdk = root / "sdk/versions/known-good"
+                old_java = root / "java/versions/known-good"
+                old_sdk.mkdir(parents=True)
+                old_java.mkdir(parents=True)
+                (old_sdk / "marker").write_text("old SDK")
+                (old_java / "marker").write_text("old Java")
+                (root / "sdk/current").symlink_to("versions/known-good")
+                (root / "java/current").symlink_to("versions/known-good")
+                real_replace = os.replace
+                real_atomic_current = android_setup._atomic_current
+                fired = False
+
+                def fail_after_move(source, destination):
+                    nonlocal fired
+                    result = real_replace(source, destination)
+                    destination = Path(destination)
+                    matches = (
+                        boundary == "sdk-generation"
+                        and destination.parent == root / "sdk/versions"
+                        and destination.name.startswith("android-sdk-")
+                    ) or (
+                        boundary == "java-staging"
+                        and destination.name == "java-install"
+                    ) or (
+                        boundary == "java-generation"
+                        and destination.parent == root / "java/versions"
+                        and destination.name.startswith("microsoft-jdk-")
+                    )
+                    if matches and not fired:
+                        fired = True
+                        raise OSError(f"simulated failure after {boundary} move")
+                    return result
+
+                def fail_after_activation(link, target):
+                    nonlocal fired
+                    result = real_atomic_current(link, target)
+                    matches = (
+                        boundary == "java-current"
+                        and Path(link) == root / "java/current"
+                        and Path(target).parent == root / "java/versions"
+                    ) or (
+                        boundary == "sdk-current"
+                        and Path(link) == root / "sdk/current"
+                        and Path(target).parent == root / "sdk/versions"
+                    )
+                    if matches and not fired:
+                        fired = True
+                        raise OSError(f"simulated failure after {boundary} activation")
+                    return result
+
+                run, _ = self.fake_sdkmanager()
+                with self.local_downloads():
+                    if boundary.endswith("generation") or boundary == "java-staging":
+                        with mock.patch.object(os, "replace", side_effect=fail_after_move):
+                            with self.assertRaisesRegex(OSError, "simulated failure"):
+                                android_setup.setup_android(
+                                    "system-images;android-35;google_apis;x86_64",
+                                    True, root, runner=run,
+                                )
+                    else:
+                        with mock.patch.object(
+                            android_setup, "_atomic_current", side_effect=fail_after_activation
+                        ):
+                            with self.assertRaisesRegex(OSError, "simulated failure"):
+                                android_setup.setup_android(
+                                    "system-images;android-35;google_apis;x86_64",
+                                    True, root, runner=run,
+                                )
+                self.assertTrue(fired)
+                self.assertEqual("old SDK", (root / "sdk/current/marker").read_text())
+                self.assertEqual("old Java", (root / "java/current/marker").read_text())
+                self.assertEqual(["known-good"], sorted(path.name for path in (root / "sdk/versions").iterdir()))
+                self.assertEqual(["known-good"], sorted(path.name for path in (root / "java/versions").iterdir()))
+                self.assertEqual([], list(root.glob(".setup-*")))
+
+    def test_standalone_java_activation_failure_restores_selection_and_removes_only_new_version(self):
+        for had_current in (True, False):
+            with self.subTest(had_current=had_current):
+                root = self.scratch_path(f"standalone-{had_current}", "data", "t3code", "android")
+                java_versions = root / "java/versions"
+                java_versions.mkdir(parents=True)
+                if had_current:
+                    old_java = java_versions / "known-good"
+                    old_java.mkdir()
+                    (old_java / "marker").write_text("old Java")
+                    (root / "java/current").symlink_to("versions/known-good")
+                real_atomic_current = android_setup._atomic_current
+                fired = False
+
+                def fail_after_activation(link, target):
+                    nonlocal fired
+                    result = real_atomic_current(link, target)
+                    if (
+                        Path(link) == root / "java/current"
+                        and Path(target).parent == java_versions
+                        and not fired
+                    ):
+                        fired = True
+                        raise OSError("simulated Java activation failure")
+                    return result
+
+                with self.local_downloads():
+                    with mock.patch.object(
+                        android_setup, "_atomic_current", side_effect=fail_after_activation
+                    ):
+                        with self.assertRaisesRegex(OSError, "simulated Java activation failure"):
+                            android_setup.install_private_java(root=root)
+                self.assertTrue(fired)
+                if had_current:
+                    self.assertEqual("old Java", (root / "java/current/marker").read_text())
+                    self.assertEqual(["known-good"], sorted(path.name for path in java_versions.iterdir()))
+                else:
+                    self.assertFalse(os.path.lexists(root / "java/current"))
+                    self.assertEqual([], list(java_versions.iterdir()))
+                self.assertFalse((root / "sdk").exists())
+                self.assertEqual([], list(root.glob(".setup-*")))
+
     def test_interrupted_sdkmanager_run_cleans_stage_and_preserves_current(self):
-        root = self.root / "data/t3code/android"
+        root = self.android_root()
         old_sdk = root / "sdk/versions/known-good"
         old_java = root / "java/versions/known-good"
         old_sdk.mkdir(parents=True)
@@ -519,6 +808,7 @@ class AndroidSetupTests(unittest.TestCase):
         self.assertIn("platform-tools/adb: missing", report)
         self.assertIn("Java: unavailable", report)
         self.assertIn("KVM:", report)
+        self.assertIn("t3code-android-diagnostics", report)
         self.assertIn("t3code-android-setup", report)
         self.assertIn("install-java", report)
 
@@ -542,6 +832,42 @@ class AndroidSetupTests(unittest.TestCase):
         self.assertIn("Java: ", report)
         self.assertIn("failed to start", report)
         self.assertIn("Setup command:", report)
+
+    def test_diagnostics_cli_discovers_private_java_and_honors_java_home(self):
+        root = self.android_root()
+        with self.local_downloads():
+            android_setup.install_private_java(root=root)
+
+        private_java = root / "java/current/bin/java"
+        cli_env = {
+            "HOME": str(self.root / "home"),
+            "XDG_DATA_HOME": str(self.root / "data"),
+            "PATH": "",
+            "JAVA_HOME": "",
+            "ANDROID_HOME": "",
+            "ANDROID_SDK_ROOT": "",
+        }
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "diagnostics"],
+            env=cli_env, capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(1, result.returncode)
+        self.assertIn(f"Java: {private_java}", result.stdout)
+        self.assertIn('openjdk version "17.0.21"', result.stdout)
+
+        explicit_java_home = self.scratch_path("explicit-java")
+        explicit_java = explicit_java_home / "bin/java"
+        explicit_java.parent.mkdir(parents=True)
+        explicit_java.write_text('#!/bin/sh\necho \'openjdk version "17.0.99"\' >&2\n')
+        explicit_java.chmod(0o755)
+        cli_env["JAVA_HOME"] = str(explicit_java_home)
+        result = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "diagnostics"],
+            env=cli_env, capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(1, result.returncode)
+        self.assertIn(f"Java: {explicit_java}", result.stdout)
+        self.assertIn('openjdk version "17.0.99"', result.stdout)
 
 
 if __name__ == "__main__":

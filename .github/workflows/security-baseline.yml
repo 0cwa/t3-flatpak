@@ -18,6 +18,8 @@ jobs:
         run: python -m pip install --disable-pip-version-check -r scripts/requirements-security.txt
       - name: Test permission checker
         run: python -m unittest discover -s tests -p test_flatpak_security.py
+      - name: Test Android setup helper
+        run: python -m unittest discover -s tests -p test_android_setup.py
       - name: Test preview archive guards and file-transfer boundary
         run: |
           python -m unittest discover -s tests -p test_preview_patch.py
@@ -27,4 +29,7 @@ jobs:
       - name: Check default permissions and launcher
         run: python scripts/check-flatpak-security.py
       - name: Check launcher syntax
-        run: bash -n startt3code
+        run: |
+          for script in startt3code t3code-android-setup t3code-android-diagnostics tests/check-android-launcher.sh; do
+            bash -n "$script"
+          done
