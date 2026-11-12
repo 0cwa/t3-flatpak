@@ -45,6 +45,15 @@ class FlatpakSecurityTests(unittest.TestCase):
             with self.subTest(arguments=arguments):
                 self.check_source(f"finish-args: {arguments}\n", False)
 
+    def test_device_grants_reject_all_but_allow_narrow_devices(self):
+        for argument in (
+            '"--device=all"', '"--device", "all"',
+            '"--device=usb"', '"--device", "input"',
+        ):
+            with self.subTest(argument=argument):
+                self.check_source(f"finish-args: [{argument}]\n", False)
+        self.check_source('finish-args: ["--device=kvm", "--device=dri"]\n', True)
+
     def test_normalized_credential_paths_and_parent_grants(self):
         for path in (
             "~/./.ssh:ro", "~/.ssh/key:ro", "~/.ssh/../.gnupg:ro",

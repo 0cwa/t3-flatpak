@@ -101,7 +101,7 @@ def persists(permissions, directory):
 
 def check_permissions(permissions):
     errors = []
-    watched = {"--filesystem", "--talk-name", "--own-name", "--socket"}
+    watched = {"--filesystem", "--talk-name", "--own-name", "--socket", "--device"}
     index = 0
     while index < len(permissions):
         permission = permissions[index]
@@ -122,6 +122,7 @@ def check_permissions(permissions):
             (option == "--filesystem" and unsafe_filesystem(value))
             or (option in {"--talk-name", "--own-name"} and includes_flatpak_bus_name(value))
             or (option == "--socket" and value in {"session-bus", "system-bus"})
+            or (option == "--device" and value not in {"dri", "kvm"})
         )
         if unsafe:
             errors.append(f"unsafe default permission: {option}={value}")

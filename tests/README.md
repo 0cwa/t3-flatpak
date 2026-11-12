@@ -77,3 +77,17 @@ this change does not alter `finish-args`.
 Remove the disposable installation and build directory when finished, and
 unset `FLATPAK_USER_DIR`. Update the fixture's branch and SDK when changing the
 app's Freedesktop runtime version.
+
+## Android setup helper checks
+
+The optional Android bootstrap is covered with local HTTP and archive fixtures;
+these checks do not download SDK packages or modify a host SDK:
+
+```bash
+python3 -m unittest discover -s tests -p 'test_android_setup.py'
+```
+
+The fixture tests verify pinned-download failures, safe archive extraction,
+explicit license consent, atomic activation and rollback, locking, launcher
+state paths, and diagnostics. The manifest security check also rejects device
+grants other than the existing `dri` and Android `kvm` devices.
