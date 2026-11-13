@@ -14,7 +14,7 @@ const results = {};
 const watchdog = setTimeout(() => { console.error("Preview regression timed out"); process.exit(1); }, 90_000);
 const home = process.env.HOME;
 let contexts;
-const markerPaths = [".t3/userdata/secrets", ".codex", ".claude", ".ssh", ".var/app/com.t3tools.t3code/data", ".var/app/com.t3tools.t3code/config", ".var/app/com.t3tools.t3code/cache"]
+const markerPaths = [".t3/userdata/secrets", ".pi/agent", ".codex", ".claude", ".ssh", ".var/app/com.t3tools.t3code/data", ".var/app/com.t3tools.t3code/config", ".var/app/com.t3tools.t3code/cache"]
   .map((directory) => path.join(home, directory, "disposable-preview-marker.js"));
 markerPaths.push(path.join(root, "project-marker.js"));
 let blockedRequests = 0;
