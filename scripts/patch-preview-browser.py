@@ -25,6 +25,16 @@ REPLACEMENTS = (
      'open.chooser.setFiles(await stageUploads(tab.page, open.chooser.isMultiple() ? [...input.files] : input.files.slice(0, 1)))'),
     ('await download.saveAs(path);', 'await saveDownload(download, path);'),
 )
+ANDROID_MISSING_SDK_BEFORE = (
+    "Android SDK was not found. Install it with Android Studio or set ANDROID_HOME to your SDK directory."
+)
+ANDROID_MISSING_SDK_AFTER = (
+    "Android SDK is missing in this Flatpak. Check it with: "
+    "flatpak run --command=t3code-android-diagnostics com.t3tools.t3code. "
+    "Install with: flatpak run --command=t3code-android-setup com.t3tools.t3code "
+    "--system-image 'system-images;android-36;google_apis;x86_64' "
+    "(review and accept the SDK licenses when prompted)."
+)
 
 
 def patch_server(source):
@@ -32,6 +42,9 @@ def patch_server(source):
         if source.count(before) != 1:
             raise ValueError(f"Preview patch expected exactly one launch/transfer site: {before!r}")
         source = source.replace(before, after)
+    if source.count(ANDROID_MISSING_SDK_BEFORE) != 1:
+        raise ValueError("Android setup patch expected exactly one missing-SDK reason")
+    source = source.replace(ANDROID_MISSING_SDK_BEFORE, ANDROID_MISSING_SDK_AFTER)
     imports = 'import { isolatedPlaywright, stageUploads, saveDownload } from "/app/lib/t3-preview/adapter.mjs";\n'
     if source.startswith("#!"):
         first, rest = source.split("\n", 1)

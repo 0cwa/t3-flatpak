@@ -17,7 +17,9 @@ SPEC.loader.exec_module(PATCH)
 
 class PreviewPatchTests(unittest.TestCase):
     def test_both_launch_paths_and_file_transfers_are_required(self):
-        source = "#!/usr/bin/env node\n" + "\n".join(before for before, _ in PATCH.REPLACEMENTS)
+        source = "#!/usr/bin/env node\n" + "\n".join(
+            [*(before for before, _ in PATCH.REPLACEMENTS), PATCH.ANDROID_MISSING_SDK_BEFORE]
+        )
         result = PATCH.patch_server(source)
         self.assertTrue(result.startswith("#!/usr/bin/env node\nimport "))
         for _, replacement in PATCH.REPLACEMENTS:
@@ -28,6 +30,20 @@ class PreviewPatchTests(unittest.TestCase):
                     PATCH.patch_server(source.replace(before, "changed upstream"))
                 with self.assertRaises(ValueError):
                     PATCH.patch_server(source + before)
+
+    def test_missing_sdk_reason_is_replaced_once_with_packaged_commands(self):
+        source = "\n".join(
+            [*(before for before, _ in PATCH.REPLACEMENTS), PATCH.ANDROID_MISSING_SDK_BEFORE]
+        )
+        result = PATCH.patch_server(source)
+        self.assertNotIn(PATCH.ANDROID_MISSING_SDK_BEFORE, result)
+        self.assertIn(PATCH.ANDROID_MISSING_SDK_AFTER, result)
+        self.assertIn("t3code-android-diagnostics", result)
+        self.assertIn("t3code-android-setup", result)
+        with self.assertRaisesRegex(ValueError, "exactly one missing-SDK reason"):
+            PATCH.patch_server(source.replace(PATCH.ANDROID_MISSING_SDK_BEFORE, "changed upstream"))
+        with self.assertRaisesRegex(ValueError, "exactly one missing-SDK reason"):
+            PATCH.patch_server(source + PATCH.ANDROID_MISSING_SDK_BEFORE)
 
     def test_archive_rewrite_preserves_other_files_and_updates_integrity(self):
         scratch = Path.home() / "agent-scratch/t3-flatpak/preview-unit-tests"

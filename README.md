@@ -77,6 +77,66 @@ the launcher leaves it off `PATH`.
 
 When installed normally, those resolve under `~/.var/app/com.t3tools.t3code/data/npm-global` and `~/.var/app/com.t3tools.t3code/cache/npm`.
 
+## Optional Android emulator
+
+Android support is opt-in. The default install downloads no Android SDK or Java.
+Run diagnostics to see the SDK, Java, and KVM state available inside the
+Flatpak:
+
+```bash
+flatpak run --command=t3code-android-diagnostics com.t3tools.t3code
+```
+
+To install the pinned Microsoft Java 17 runtime and official Android command
+line tools into T3 Code app data, choose an x86_64 system image:
+
+```bash
+flatpak run --command=t3code-android-setup com.t3tools.t3code \
+  --system-image 'system-images;android-36;google_apis;x86_64'
+```
+
+The helper verifies the Java and command-line tools SHA-256 checksums published
+by [Microsoft](https://learn.microsoft.com/en-us/java/openjdk/download) and
+[Android Developers](https://developer.android.com/studio/) before extracting
+them, then uses Google's `sdkmanager` to install platform-tools, the emulator,
+and the selected image. Without the flag, the helper prints the terms link and
+requires you to type `accept` before downloading, then passes that consent to
+`sdkmanager --licenses`. Add `--accept-licenses` only after reviewing and
+explicitly accepting [Google's Android SDK terms](https://developer.android.com/studio/terms).
+The SDK, Java, preferences, and AVDs
+remain under T3 Code app data; T3 Code must restart after setup so its device
+host discovers the new SDK. Setup verifies the license record, executable
+tools, and package metadata before switching to a new generation. Failures
+leave active generations in place.
+
+The Flatpak grants only `/dev/kvm` for emulator acceleration. Without usable
+KVM access, emulator acceleration checks report the limitation; a system image
+may still run with software acceleration. A host SDK can be used as a secondary
+option by exposing only that SDK directory read-only. If the host SDK is not at
+`$HOME/Android/Sdk`, substitute its actual path in both options, then restart
+T3 Code:
+
+```bash
+flatpak override --user \
+  --filesystem="$HOME/Android/Sdk:ro" \
+  --env=ANDROID_HOME="$HOME/Android/Sdk" \
+  com.t3tools.t3code
+```
+
+If that SDK does not have a Java runtime visible in the sandbox, install only
+the pinned JDK into app data; this does not change the read-only SDK:
+
+```bash
+flatpak run --command=t3code-android-setup com.t3tools.t3code install-java
+```
+
+The launcher honors explicit `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `JAVA_HOME`,
+and Android state-directory variables. Setup refuses to alter an SDK or Java
+selected by an external override; clear those variables before installing the
+full app-private SDK. The `install-java` action honors the selected read-only
+SDK and leaves it unchanged. It never grants host home access,
+`--device=all`, or host command execution.
+
 ## Optional tool extensions
 
 Separately maintained tool sets can use the `com.t3tools.t3code.Tools`

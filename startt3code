@@ -1,6 +1,35 @@
 #!/usr/bin/env bash
 
 export TMPDIR="$XDG_RUNTIME_DIR/app/${FLATPAK_ID:-com.t3tools.t3code}"
+# Android is opt-in. Prefer an explicit SDK, including a deliberately mounted
+# read-only host SDK, and otherwise use the app-private setup helper's SDK.
+android_data="${XDG_DATA_HOME:-$HOME/.local/share}/t3code/android"
+private_android_sdk="$android_data/sdk/current"
+if [[ -n "${ANDROID_HOME:-}" ]]; then
+    : "${ANDROID_SDK_ROOT:=$ANDROID_HOME}"
+    export ANDROID_SDK_ROOT
+elif [[ -n "${ANDROID_SDK_ROOT:-}" ]]; then
+    export ANDROID_HOME="$ANDROID_SDK_ROOT"
+elif [[ -d "$private_android_sdk" ]]; then
+    export ANDROID_HOME="$private_android_sdk"
+    export ANDROID_SDK_ROOT="$private_android_sdk"
+fi
+if [[ -n "${ANDROID_HOME:-}" ]]; then
+    # The device hub adds its own `-gpu auto` before these extra arguments.
+    # Put swangle first so any explicit user GPU option later in the value wins.
+    export EXPO_DEVICE_HUB_EMULATOR_EXTRA_ARGS="-gpu swangle${EXPO_DEVICE_HUB_EMULATOR_EXTRA_ARGS:+ $EXPO_DEVICE_HUB_EMULATOR_EXTRA_ARGS}"
+    export ANDROID_USER_HOME="${ANDROID_USER_HOME:-$android_data/user}"
+    export ANDROID_AVD_HOME="${ANDROID_AVD_HOME:-$ANDROID_USER_HOME/avd}"
+    mkdir -p "$ANDROID_USER_HOME" "$ANDROID_AVD_HOME"
+    export PATH="$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+fi
+if [[ -n "${JAVA_HOME:-}" ]]; then
+    export PATH="$JAVA_HOME/bin:$PATH"
+elif [[ -x "$android_data/java/current/bin/java" ]]; then
+    export JAVA_HOME="$android_data/java/current"
+    export PATH="$JAVA_HOME/bin:$PATH"
+fi
+unset android_data private_android_sdk
 export NPM_CONFIG_PREFIX="${XDG_DATA_HOME:-$HOME/.local/share}/npm-global"
 export NPM_CONFIG_CACHE="${XDG_CACHE_HOME:-$HOME/.cache}/npm"
 # Flatpak mounts optional tool extensions but does not add their commands to

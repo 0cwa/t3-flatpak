@@ -52,6 +52,8 @@ p.read(sys.argv[1])
 context = p['Context']
 sockets = context.get('sockets', '').split(';')
 assert 'ssh-auth' not in sockets, 'SSH agent must be opt-in'
+devices = {device for device in context.get('devices', '').split(';') if device}
+assert devices == {'dri', 'kvm'}, f'Expected only the narrow dri and kvm grants: {devices}'
 assert '.ssh' in context.get('persistent', '').split(';'), 'App-private SSH state must persist'
 assert '.local/bin' in context.get('persistent', '').split(';'), 'App-private ~/.local/bin must persist'
 filesystems = context.get('filesystems', '').split(';')

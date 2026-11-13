@@ -21,6 +21,28 @@ if [[ ${T3_PREVIEW_APPLY_PATCH:-0} == 1 ]]; then
     install -m644 "$tests_dir"/../preview/{adapter,paths,supervisor}.mjs "$test_root/app/lib/t3-preview/"
     install -m755 "$tests_dir/../preview/launch.mjs" "$test_root/app/lib/t3-preview/"
 fi
+python3 - "$test_root/app/bin/t3code/resources/app.asar" "$tests_dir" <<'PY'
+import importlib.util
+from pathlib import Path
+import sys
+
+repository = Path(sys.argv[2]).resolve().parent
+spec = importlib.util.spec_from_file_location(
+    "preview_patch", repository / "scripts/patch-preview-browser.py"
+)
+patch = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(patch)
+archive = Path(sys.argv[1])
+with archive.open("rb") as stream:
+    header, payload = patch.read_header(stream)
+    entry = dict(patch.entries(header))[patch.SERVER]
+    stream.seek(payload + int(entry["offset"]))
+    server = stream.read(entry["size"]).decode()
+assert patch.ANDROID_MISSING_SDK_AFTER in server
+assert patch.ANDROID_MISSING_SDK_BEFORE not in server
+assert "isolatedPlaywright" in server and "stageUploads" in server
+print("Installed Devices error includes Android setup and diagnostics commands.")
+PY
 python3 "$tests_dir/instrument-preview-browser.py" "$test_root/app/bin/t3code/resources/app.asar"
 cp "$tests_dir/check-preview-browser.mjs" "$test_root/check.mjs"
 mkdir "$test_root/state"

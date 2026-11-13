@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+case "${1:-}" in
+    setup|install-java)
+        android_action="$1"
+        shift
+        ;;
+    *)
+        android_action=setup
+        ;;
+esac
+exec python3 /app/lib/t3-android/android_setup.py "$android_action" "$@"

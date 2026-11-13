@@ -17,11 +17,14 @@ jobs:
         run: |
           zypper --non-interactive refresh
           zypper --non-interactive install --no-recommends -y \
-            nodejs git flatpak flatpak-builder glycin-loaders
+            nodejs git flatpak flatpak-builder glycin-loaders python3
           flatpak remote-add --if-not-exists flathub \
             https://dl.flathub.org/repo/flathub.flatpakrepo
 
       - uses: https://code.forgejo.org/actions/checkout@v6
+
+      - name: Test Android setup helper
+        run: python3 -m unittest discover -s tests -p test_android_setup.py
 
       - name: Build repository
         run: |
