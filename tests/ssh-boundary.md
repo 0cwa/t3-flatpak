@@ -15,7 +15,8 @@ Do not run it under an account containing real T3 Code data or credentials.
 The check:
 
 - Inspects installed permissions for host directory, host-command, and default
-  SSH-agent grants, and checks that app-private `.ssh` and `.pi` persist.
+  SSH-agent grants, and checks that app-private `.ssh` and `.local/bin` are
+  persistent, plus app-private `.pi` state.
 - Creates dummy canary files in the test account's `.ssh`, `.gnupg`, and
   `.local/bin` directories. They contain no credentials.
 - Starts a dedicated temporary agent with a generated test key, leaving any

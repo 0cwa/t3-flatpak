@@ -23,11 +23,19 @@ add-extensions:
 finish-args:
   # Electron needs the render device for accelerated compositing and animations.
   - --device=dri
+  # Android Emulator hardware acceleration; never grant all devices.
+  - --device=kvm
   - --socket=wayland
   - --socket=fallback-x11
   - --share=ipc
   - --share=network
   - --env=GTK_USE_PORTAL=1
+  # T3's server-side preview browser (html_preview, headless browser tabs) is
+  # Chrome-for-Testing, which needs unprivileged user namespaces for its own
+  # sandbox. Flatpak's seccomp filter blocks those. Both preview launch sites
+  # use our reduced Flatpak child sandbox, hiding app credentials from the whole
+  # browser. Chrome's renderer sandbox remains disabled inside that child.
+  - --env=T3CODE_SERVER_BROWSER_SANDBOX=0
   - --env=XCURSOR_PATH=/run/host/user-share/icons:/run/host/share/icons # This is used to show the correct cursor on Wayland
   # Without home access, $HOME inside the sandbox is a tmpfs that is discarded
   # on exit. Map app state dirs that ignore XDG onto persistent app storage.
@@ -37,6 +45,9 @@ finish-args:
   - --persist=.codex # Codex CLI
   - --persist=.claude # Claude Code (startt3code points CLAUDE_CONFIG_DIR here)
   - --persist=.ssh # sandbox-local SSH configuration and verified host keys
+  # App-private ~/.local/bin, not the host's. Claude's native installer (which
+  # T3 Code suggests) keeps its launcher symlink here and repoints it on update.
+  - --persist=.local/bin
 
 modules:
   - name: nodejs
@@ -169,8 +180,13 @@ modules:
         done
       - install -D squashfs-root/t3code.desktop /app/share/applications/com.t3tools.t3code.desktop
       - install -Dm755 startt3code /app/bin/startt3code
+      - python3 patch-preview-browser.py squashfs-root/resources/app.asar
+      - install -Dm644 preview/adapter.mjs preview/paths.mjs preview/supervisor.mjs -t /app/lib/t3-preview/
+      - install -Dm755 preview/launch.mjs /app/lib/t3-preview/launch.mjs
       - install -d /app/tools
       - install -Dm755 t3code-install-provider /app/bin/t3code-install-provider
+      - install -Dm644 android_setup.py /app/lib/t3-android/android_setup.py
+      - install -Dm755 t3code-android-setup t3code-android-diagnostics -t /app/bin/
       - install -D com.t3tools.t3code.metainfo.xml -t /app/share/metainfo/
       - mv squashfs-root /app/bin/t3code
 
@@ -178,15 +194,26 @@ modules:
       - type: file
         path: startt3code
       - type: file
+        path: scripts/patch-preview-browser.py
+      - type: dir
+        path: preview
+        dest: preview
+      - type: file
         path: t3code-install-provider
+      - type: file
+        path: scripts/android_setup.py
+      - type: file
+        path: t3code-android-setup
+      - type: file
+        path: t3code-android-diagnostics
 
       - type: file
         path: com.t3tools.t3code.metainfo.xml
 
       - type: file
-        url: https://github.com/pingdotgg/t3code/releases/download/v0.1.7/T3-Code-0.1.7-x86_64.AppImage
+        url: https://github.com/pingdotgg/t3code/releases/download/v0.1.9/T3-Code-0.1.9-x86_64.AppImage
         dest-filename: T3-Code.AppImage
-        sha256: faaee4094dca1276057840a1a45a6b2d00d7418afbf5735f75a7503b774e63d1
+        sha256: d0ab56df3e338f242848435621297fd963a33715b0d8208dbf08399659572d81
         only-arches: [x86_64]
         x-checker-data:
           type: electron-updater

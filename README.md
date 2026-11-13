@@ -23,6 +23,29 @@ T3 Code:
 flatpak override --user --device=dri com.t3tools.t3code
 ```
 
+## Preview browser
+
+T3 Code's server-side preview browser (used by `html_preview` and headless
+browser tabs) is a downloaded Chrome that normally starts its own sandbox. Inside
+Flatpak that fails with "No usable sandbox", and T3 Code then wrongly tells you to
+run `t3 browser setup` for AppArmor. The manifest sets
+`T3CODE_SERVER_BROWSER_SANDBOX=0` so Chrome runs without its own inner sandbox.
+Both server-side preview paths launch in a separate reduced Flatpak sandbox
+with only the browser resources, selected profile, and file-transfer staging
+directory exposed. T3/provider credentials and project directories are hidden
+from that browser. Network access remains shared, including local development
+servers; the HTML renderer also retains its public-only proxy restrictions.
+
+For an older installation, set it locally and restart T3 Code:
+
+```bash
+flatpak override --user --env=T3CODE_SERVER_BROWSER_SANDBOX=0 com.t3tools.t3code
+```
+
+That override alone does not add the separate browser sandbox to older builds.
+Setting the value to `1` requires Chrome's own sandbox as well; on installations
+that block user namespaces, previews fail rather than retrying without isolation.
+
 ## Sandbox
 
 The default sandbox grants display, IPC, network, portal-based file picking, and
@@ -37,17 +60,82 @@ Project directory access still requires an explicit per-path override.
 
 ## Sandbox runtime tools
 
-The Flatpak bundles sandbox-local `node`, `npm`, `npx`, `corepack`, `git`, OpenSSH client tools, and the `gh`, `glab`, and `tea` hosting CLIs. These are real binaries inside `/app`, not host wrappers. The launcher does not add host `~/.local/bin` to `PATH`. The manifest does not grant host command execution, home access, or SSH-agent access.
+The Flatpak bundles sandbox-local `node`, `npm`, `npx`, `corepack`, `git`, OpenSSH client tools, and the `gh`, `glab`, and `tea` hosting CLIs. These are real binaries inside `/app`, not host wrappers. The launcher adds the app-private `~/.local/bin` to `PATH`, never the host's. The manifest does not grant host command execution, home access, or SSH-agent access.
 
 The launcher configures npm globals and cache under T3 Code app data:
 
 ```bash
 NPM_CONFIG_PREFIX=${XDG_DATA_HOME:-$HOME/.local/share}/npm-global
 NPM_CONFIG_CACHE=${XDG_CACHE_HOME:-$HOME/.cache}/npm
-PATH=$NPM_CONFIG_PREFIX/bin:/app/bin:$PATH
+PATH=$HOME/.local/bin:$NPM_CONFIG_PREFIX/bin:/app/bin:$PATH
 ```
 
+Inside the sandbox, `$HOME/.local/bin` is app-private storage
+(`~/.var/app/com.t3tools.t3code/.local/bin`), not the host directory. If an
+override such as `--filesystem=home` exposes the host's `~/.local/bin` instead,
+the launcher leaves it off `PATH`.
+
 When installed normally, those resolve under `~/.var/app/com.t3tools.t3code/data/npm-global` and `~/.var/app/com.t3tools.t3code/cache/npm`.
+
+## Optional Android emulator
+
+Android support is opt-in. The default install downloads no Android SDK or Java.
+Run diagnostics to see the SDK, Java, and KVM state available inside the
+Flatpak:
+
+```bash
+flatpak run --command=t3code-android-diagnostics com.t3tools.t3code
+```
+
+To install the pinned Microsoft Java 17 runtime and official Android command
+line tools into T3 Code app data, choose an x86_64 system image:
+
+```bash
+flatpak run --command=t3code-android-setup com.t3tools.t3code \
+  --system-image 'system-images;android-36;google_apis;x86_64'
+```
+
+The helper verifies the Java and command-line tools SHA-256 checksums published
+by [Microsoft](https://learn.microsoft.com/en-us/java/openjdk/download) and
+[Android Developers](https://developer.android.com/studio/) before extracting
+them, then uses Google's `sdkmanager` to install platform-tools, the emulator,
+and the selected image. Without the flag, the helper prints the terms link and
+requires you to type `accept` before downloading, then passes that consent to
+`sdkmanager --licenses`. Add `--accept-licenses` only after reviewing and
+explicitly accepting [Google's Android SDK terms](https://developer.android.com/studio/terms).
+The SDK, Java, preferences, and AVDs
+remain under T3 Code app data; T3 Code must restart after setup so its device
+host discovers the new SDK. Setup verifies the license record, executable
+tools, and package metadata before switching to a new generation. Failures
+leave active generations in place.
+
+The Flatpak grants only `/dev/kvm` for emulator acceleration. Without usable
+KVM access, emulator acceleration checks report the limitation; a system image
+may still run with software acceleration. A host SDK can be used as a secondary
+option by exposing only that SDK directory read-only. If the host SDK is not at
+`$HOME/Android/Sdk`, substitute its actual path in both options, then restart
+T3 Code:
+
+```bash
+flatpak override --user \
+  --filesystem="$HOME/Android/Sdk:ro" \
+  --env=ANDROID_HOME="$HOME/Android/Sdk" \
+  com.t3tools.t3code
+```
+
+If that SDK does not have a Java runtime visible in the sandbox, install only
+the pinned JDK into app data; this does not change the read-only SDK:
+
+```bash
+flatpak run --command=t3code-android-setup com.t3tools.t3code install-java
+```
+
+The launcher honors explicit `ANDROID_HOME`, `ANDROID_SDK_ROOT`, `JAVA_HOME`,
+and Android state-directory variables. Setup refuses to alter an SDK or Java
+selected by an external override; clear those variables before installing the
+full app-private SDK. The `install-java` action honors the selected read-only
+SDK and leaves it unchanged. It never grants host home access,
+`--device=all`, or host command execution.
 
 ## Optional tool extensions
 
@@ -97,6 +185,17 @@ The helper only accepts `codex`, `claude`, or `opencode`, and installs the
 mapped npm package into the same app-owned npm prefix used by the launcher.
 Grok and Cursor agent installs are intentionally not supported by this helper.
 
+Claude Code can also be installed with Anthropic's native installer, which
+T3 Code suggests during setup. Run it in a T3 Code terminal:
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+It keeps versions in `$XDG_DATA_HOME/claude/versions` and its `claude` launcher in
+the app-private `~/.local/bin`. Both persist, so `claude update` and T3 Code's
+update button switch to the new version.
+
 Installing a provider downloads executable code into the T3 Code Flatpak
 sandbox. That code can access T3 Code app data and any project paths explicitly
 mounted into the Flatpak later. It does not gain broad host filesystem access
@@ -116,6 +215,7 @@ that app directory:
 | `~/.pi` | `~/.var/app/com.t3tools.t3code/.pi` | Pi settings, sessions, and provider credentials (including `agent/auth.json`) | `--persist=.pi` |
 | `~/.codex` | `~/.var/app/com.t3tools.t3code/.codex` | Codex CLI config and auth | `--persist=.codex` |
 | `~/.claude` | `~/.var/app/com.t3tools.t3code/.claude` | Claude Code config, including `.claude.json` | `--persist=.claude` + `CLAUDE_CONFIG_DIR` |
+| `~/.local/bin` | `~/.var/app/com.t3tools.t3code/.local/bin` | launchers from native installers such as Claude Code's; not the host `~/.local/bin` | `--persist=.local/bin` |
 | `~/.ssh` | `~/.var/app/com.t3tools.t3code/.ssh` | sandbox-local SSH configuration and verified `known_hosts`; not the host SSH directory | `--persist=.ssh` |
 | `$XDG_CONFIG_HOME/git/config` | `~/.var/app/com.t3tools.t3code/config/git/config` | `git config --global` settings | launcher creates the file so git prefers it over `~/.gitconfig` |
 | `$HISTFILE` | `~/.var/app/com.t3tools.t3code/.local/state/bash/history` | terminal shell history | launcher sets `HISTFILE` |

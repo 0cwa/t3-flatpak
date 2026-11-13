@@ -18,12 +18,19 @@ jobs:
         run: python -m pip install --disable-pip-version-check -r scripts/requirements-security.txt
       - name: Test permission checker
         run: python -m unittest discover -s tests -p test_flatpak_security.py
+      - name: Test Android setup helper
+        run: python -m unittest discover -s tests -p test_android_setup.py
+      - name: Test preview archive guards and file-transfer boundary
+        run: |
+          python -m unittest discover -s tests -p test_preview_patch.py
+          node --test tests/test-preview-files.mjs
       - name: Test AppImage updater publication and retries
         run: python -m unittest discover -s tests -p test_appimage_update_workflow.py
       - name: Check default permissions and launcher
         run: python scripts/check-flatpak-security.py
-      - name: Check launcher and Pi integration-test syntax
+      - name: Check launcher syntax
         run: |
-          bash -n startt3code
-          bash -n tests/check-ssh-boundary.sh
-          bash -n tests/check-pi-persistence.sh
+          for script in startt3code t3code-android-setup t3code-android-diagnostics \
+              tests/check-android-launcher.sh tests/check-ssh-boundary.sh tests/check-pi-persistence.sh; do
+            bash -n "$script"
+          done

@@ -45,6 +45,15 @@ class FlatpakSecurityTests(unittest.TestCase):
             with self.subTest(arguments=arguments):
                 self.check_source(f"finish-args: {arguments}\n", False)
 
+    def test_device_grants_reject_all_but_allow_narrow_devices(self):
+        for argument in (
+            '"--device=all"', '"--device", "all"',
+            '"--device=usb"', '"--device", "input"',
+        ):
+            with self.subTest(argument=argument):
+                self.check_source(f"finish-args: [{argument}]\n", False)
+        self.check_source('finish-args: ["--device=kvm", "--device=dri"]\n', True)
+
     def test_normalized_credential_paths_and_parent_grants(self):
         for path in (
             "~/./.ssh:ro", "~/.ssh/key:ro", "~/.ssh/../.gnupg:ro",
@@ -93,6 +102,23 @@ class FlatpakSecurityTests(unittest.TestCase):
             True,
         )
         self.check_source("finish-args: []\n", True)
+
+    def test_launcher_local_bin_requires_app_private_persistence(self):
+        launcher = 'export PATH="$HOME/.local/bin:$PATH"\n'
+        for manifest in (
+            "finish-args: [--persist=.local/bin]\n",
+            "finish-args: [--persist=./.local/bin/]\n",
+            "finish-args: [--persist, .local/bin]\n",
+        ):
+            with self.subTest(manifest=manifest):
+                self.check_source(manifest, True, launcher)
+        for manifest in (
+            "finish-args: [--persist=.local]\n",
+            "finish-args: [--persist=.local/bin/tools]\n",
+            'finish-args: [--persist=.local/bin, "--filesystem=~/.local/bin"]\n',
+        ):
+            with self.subTest(manifest=manifest):
+                self.check_source(manifest, False, launcher)
 
     def test_known_launcher_bridges_remain_blocked(self):
         for launcher in (

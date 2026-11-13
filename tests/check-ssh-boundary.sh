@@ -52,13 +52,16 @@ p.read(sys.argv[1])
 context = p['Context']
 sockets = context.get('sockets', '').split(';')
 assert 'ssh-auth' not in sockets, 'SSH agent must be opt-in'
+devices = {device for device in context.get('devices', '').split(';') if device}
+assert devices == {'dri', 'kvm'}, f'Expected only the narrow dri and kvm grants: {devices}'
 persistent = context.get('persistent', '').split(';')
 assert '.ssh' in persistent, 'App-private SSH state must persist'
 assert '.pi' in persistent, 'App-private Pi settings and credentials must persist'
+assert '.local/bin' in persistent, 'App-private ~/.local/bin must persist'
 filesystems = context.get('filesystems', '').split(';')
 for grant in filesystems:
     path = grant.split(':', 1)[0]
-    assert path not in ('home', 'host', '~/.ssh', '~/.gnupg', '~/.local/bin'), grant
+    assert path not in ('home', 'host', '~/.ssh', '~/.gnupg', '~/.pi', '~/.local/bin'), grant
 assert p.get('Session Bus Policy', 'org.freedesktop.Flatpak', fallback='none') == 'none'
 print('Installed permission checks passed')
 PY

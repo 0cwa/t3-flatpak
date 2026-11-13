@@ -1,5 +1,11 @@
 # Tool extension integration check
 
+The installed check also runs the preview browser regression. It tests both
+packaged server browser paths in a disposable parent with an empty home and
+no host-command permission, using the exact pinned Chrome and bundled
+Playwright. See [the security notes](../docs/flatpak-security.md) for standalone
+execution and reuse of an existing browser download.
+
 Run these checks on a host with Flatpak and flatpak-builder under a disposable
 OS account or ephemeral CI container. A separate Flatpak installation still
 shares `~/.var/app` state; do not use an account with real T3 Code data or
@@ -71,3 +77,24 @@ this change does not alter `finish-args`.
 Remove the disposable installation and build directory when finished, and
 unset `FLATPAK_USER_DIR`. Update the fixture's branch and SDK when changing the
 app's Freedesktop runtime version.
+
+## Android setup helper checks
+
+The optional Android bootstrap is covered with local HTTP and archive fixtures;
+these checks do not download SDK packages or modify a host SDK. They set
+XDG and Android state paths inside the test process and assert their install
+roots remain under a per-test scratch directory. GitHub security and Forgejo
+build jobs run this suite.
+
+```bash
+python3 -m unittest discover -s tests -p 'test_android_setup.py'
+```
+
+The fixture tests verify pinned-download failures, safe archive extraction,
+explicit license consent, atomic activation and rollback, locking, launcher
+state paths, and diagnostics. The installed build check also verifies the
+packaged Python runtime and wrappers, runs clean-profile diagnostics, checks
+the installed Devices message, and checks Android launcher paths across two
+scratch-only invocations. It does not install SDK packages, accept licenses,
+create an AVD, or require KVM hardware. The permission check inspects installed
+metadata and requires only `dri` and `kvm` device grants.
