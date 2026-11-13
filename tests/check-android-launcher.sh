@@ -57,10 +57,24 @@ assert_launcher_env() {
     [[ -d "$ANDROID_USER_HOME" && -d "$ANDROID_AVD_HOME" ]]
     [[ "$PATH" == *"$JAVA_HOME/bin"* ]]
 }
-zypak-wrapper() { assert_launcher_env; }
+zypak-wrapper() {
+    assert_launcher_env
+    [[ "$EXPO_DEVICE_HUB_EMULATOR_EXTRA_ARGS" == "$expected_emulator_args" ]]
+}
 unset ANDROID_HOME ANDROID_SDK_ROOT JAVA_HOME ANDROID_USER_HOME ANDROID_AVD_HOME
+unset EXPO_DEVICE_HUB_EMULATOR_EXTRA_ARGS
+expected_emulator_args='-gpu swangle'
 source /app/bin/startt3code
 assert_launcher_env
+
+# Existing extras survive verbatim; the later explicit GPU option wins when
+# the hub tokenizes this value and appends it after its own `-gpu auto`.
+export EXPO_DEVICE_HUB_EMULATOR_EXTRA_ARGS='-no-snapshot -gpu angle'
+expected_emulator_args='-gpu swangle -no-snapshot -gpu angle'
+source /app/bin/startt3code
+read -r -a effective_emulator_args <<< "$EXPO_DEVICE_HUB_EMULATOR_EXTRA_ARGS"
+[[ "${effective_emulator_args[*]}" == '-gpu swangle -no-snapshot -gpu angle' ]]
+[[ "${effective_emulator_args[-1]}" == angle ]]
 
 # Explicit SDK, Java, preferences, and AVD paths take precedence over private defaults.
 override_root="$data_home/overrides"
@@ -74,6 +88,8 @@ export ANDROID_SDK_ROOT="$expected_sdk"
 export JAVA_HOME="$expected_java"
 export ANDROID_USER_HOME="$expected_user"
 export ANDROID_AVD_HOME="$expected_avd"
+unset EXPO_DEVICE_HUB_EMULATOR_EXTRA_ARGS
+expected_emulator_args='-gpu swangle'
 source /app/bin/startt3code
 assert_launcher_env
 
