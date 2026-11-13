@@ -64,6 +64,17 @@ class FlatpakSecurityTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.check_source(f'finish-args: ["--filesystem={path}"]\n', False)
 
+    def test_host_pi_and_other_app_state_cannot_be_mounted(self):
+        for path in (
+            "~/.pi", "~/.pi:ro", "~/.pi/agent/auth.json:ro",
+            "~/./.pi/agent/settings.json:ro", "home/.pi:ro",
+            "home/.pi/agent/sessions:ro", "/home/alice/.pi:ro",
+            "/var/home/alice/.pi:ro", "home/.ssh:ro",
+            "~/.t3:ro", "~/.codex:ro", "~/.claude:ro",
+        ):
+            with self.subTest(path=path):
+                self.check_source(f'finish-args: ["--filesystem={path}"]\n', False)
+
     def test_invalid_or_ambiguous_manifests_fail_closed(self):
         for source in (
             "{}\n", "finish-args: false\n", "finish-args: [null]\n",
@@ -75,12 +86,51 @@ class FlatpakSecurityTests(unittest.TestCase):
             with self.subTest(source=source):
                 self.check_source(source, False)
 
+    def test_installed_permissions_reject_credential_files_and_parents(self):
+        boundary = CHECKER.parents[1] / "tests/check-ssh-boundary.sh"
+        code = boundary.read_text().split(
+            'python3 - "$test_root/permissions" <<\'PY\'\n', 1
+        )[1].split("\nPY\n", 1)[0]
+        for grant, allowed in (
+            ("xdg-documents/projects:rw", True),
+            ("~/.pi-public-project:ro", True),
+            ("~/.pi/agent/auth.json:ro", False),
+            ("~/./.pi/agent/auth.json:ro", False),
+            ("home/.pi/agent/auth.json:ro", False),
+            ("/home/alice/.pi/agent/auth.json:ro", False),
+            ("//var/home/alice/.pi/agent/auth.json:ro", False),
+            ("/root/.pi/agent/auth.json:ro", False),
+            ("~/.ssh/key:ro", False),
+            ("~/.codex/auth.json:ro", False),
+            ("~/.local:ro", False),
+            ("~:ro", False),
+            ("/home:ro", False),
+            ("host:ro", False),
+            ("~/../alice/.pi:ro", False),
+        ):
+            with self.subTest(grant=grant), tempfile.TemporaryDirectory() as directory:
+                metadata = Path(directory) / "permissions"
+                metadata.write_text(
+                    "[Context]\ndevices=dri;kvm;\n"
+                    "persistent=.ssh;.pi;.local/bin;\n"
+                    f"filesystems={grant};\n"
+                )
+                result = subprocess.run(
+                    [sys.executable, "-c", code, str(metadata)],
+                    capture_output=True, text=True, check=False,
+                )
+                self.assertEqual(
+                    result.returncode, 0 if allowed else 1,
+                    result.stdout + result.stderr,
+                )
+
     def test_safe_yaml_and_app_private_persistence_remain_allowed(self):
         self.check_source(
             'network: &network "--share=network"\n'
             'finish-args:\n'
             '  - *network\n'
             '  - --persist=.ssh\n'
+            '  - --persist=.pi\n'
             '  - --persist=.codex\n'
             '  - --persist=.claude\n'
             '  - --persist=.t3\n'

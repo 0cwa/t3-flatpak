@@ -46,6 +46,7 @@ app=com.t3tools.t3code
 flatpak info --user --show-permissions "$app" > "$test_root/permissions"
 python3 - "$test_root/permissions" <<'PY'
 import configparser
+import posixpath
 import sys
 p = configparser.ConfigParser(interpolation=None)
 p.read(sys.argv[1])
@@ -54,12 +55,45 @@ sockets = context.get('sockets', '').split(';')
 assert 'ssh-auth' not in sockets, 'SSH agent must be opt-in'
 devices = {device for device in context.get('devices', '').split(';') if device}
 assert devices == {'dri', 'kvm'}, f'Expected only the narrow dri and kvm grants: {devices}'
-assert '.ssh' in context.get('persistent', '').split(';'), 'App-private SSH state must persist'
-assert '.local/bin' in context.get('persistent', '').split(';'), 'App-private ~/.local/bin must persist'
+persistent = context.get('persistent', '').split(';')
+assert '.ssh' in persistent, 'App-private SSH state must persist'
+assert '.pi' in persistent, 'App-private Pi settings and credentials must persist'
+assert '.local/bin' in persistent, 'App-private ~/.local/bin must persist'
 filesystems = context.get('filesystems', '').split(';')
 for grant in filesystems:
-    path = grant.split(':', 1)[0]
-    assert path not in ('home', 'host', '~/.ssh', '~/.gnupg', '~/.local/bin'), grant
+    if not grant:
+        continue
+    path, separator, mode = grant.rpartition(':')
+    if not separator or mode not in {'ro', 'rw', 'create'}:
+        path = grant
+    base, _, relative = path.partition('/')
+    if base in {'~', 'home'} or base.startswith('xdg-'):
+        relative = posixpath.normpath(relative)
+        assert relative != '..' and not relative.startswith('../'), grant
+    path = posixpath.normpath(path)
+    if path.startswith('/'):
+        path = '/' + path.lstrip('/')
+    if path.startswith('home/'):
+        path = '~/' + path[len('home/'):]
+    assert path not in {'home', 'host', 'host-os', 'host-etc', '/', '/home', '/var/home'}, grant
+    for home in ('/root', '/var/roothome'):
+        if path == home or path.startswith(home + '/'):
+            path = '~' + path[len(home):]
+            break
+    for homes in ('/home/', '/var/home/'):
+        if path.startswith(homes):
+            _, _, relative = path[len(homes):].partition('/')
+            path = '~/' + relative if relative else '~'
+            break
+    protected_paths = (
+        '~/.ssh', '~/.gnupg', '~/.pi', '~/.t3', '~/.codex', '~/.claude',
+        '~/.local/bin', '~/.config/gnupg', 'xdg-config/gnupg',
+    )
+    assert not any(
+        path == protected or path.startswith(protected + '/')
+        or protected.startswith(path + '/')
+        for protected in protected_paths
+    ), grant
 assert p.get('Session Bus Policy', 'org.freedesktop.Flatpak', fallback='none') == 'none'
 print('Installed permission checks passed')
 PY
@@ -100,4 +134,5 @@ flatpak run --user --command=sh "$app" -ec '
         echo "Agent access leaked into a default run" >&2
         exit 1
     fi'
-printf '%s\n' 'Default confinement and opt-in SSH-agent signing checks passed.'
+bash "$(dirname -- "${BASH_SOURCE[0]}")/check-pi-persistence.sh" "$app"
+printf '%s\n' 'Default confinement, Pi persistence, and opt-in SSH-agent signing checks passed.'

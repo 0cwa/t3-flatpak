@@ -30,6 +30,7 @@ jobs:
         run: python scripts/check-flatpak-security.py
       - name: Check launcher syntax
         run: |
-          for script in startt3code t3code-android-setup t3code-android-diagnostics tests/check-android-launcher.sh; do
+          for script in startt3code t3code-android-setup t3code-android-diagnostics \
+              tests/check-android-launcher.sh tests/check-ssh-boundary.sh tests/check-pi-persistence.sh; do
             bash -n "$script"
           done
