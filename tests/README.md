@@ -108,6 +108,11 @@ check update, end an otherwise readable watch, lose recovered comments, or
 repeat delivered notifications after a reactor restart. No GitHub request,
 provider session, or live thread is created.
 
+The same check exercises the shipped notification-routing block: PR-watch
+updates enter an active goal through existing noninterrupting steering, while
+ordinary queued delivery remains in place for idle threads, inactive goals,
+stopped runs, and providers that cannot steer safely.
+
 For an older installation that already has the preview isolation patch, use
 `T3_PR_WATCH_APPLY_PATCH=1 bash tests/run-pr-watch-check.sh` to apply the PR watch
 correction to the disposable copy only. CI tests the newly built installation

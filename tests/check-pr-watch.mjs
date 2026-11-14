@@ -2,6 +2,7 @@
 import assert from "node:assert/strict";
 import { prWatchTest as t } from "/app/bin/t3code/resources/app.asar/apps/server/dist/server-bi3w5spO.mjs";
 import { es as runPromise } from "/app/bin/t3code/resources/app.asar/apps/server/dist/Schema-znhrSbG8.mjs";
+import { prWatchDeliveryTest, prWatchDeliveryOptions as option } from "/app/bin/t3code/resources/app.asar/apps/server/dist/runtimeLayer-BR0FRrjb.mjs";
 
 const now = new Date().toISOString();
 const initialWatch = () => ({
@@ -98,4 +99,37 @@ await runPromise(t.gen(function* () {
   assert.equal(commands.length, before, "Failed detail reads must not invent check updates");
   assert.equal(wakes.length, 3);
 }));
-console.log("PR watch passed: check completion/failure during comment outage, retry, restart, recovery, and deduplication.");
+const queued = { type: "queue_after_active" };
+async function route(overrides = {}) {
+  const { goalStatus = "active", active = true, runningTurn = true,
+    supportsActiveSteering = true, interruptsTools = false, stopped = false,
+    noticeKind = "monitor", source = "server", messageId = "message:pr-watch:test",
+    freshContext = false } = overrides;
+  const activeRun = { id: "active-run", status: "running", providerThreadId: "provider-thread",
+    activeAttemptId: "attempt", userMessageId: "active-message" };
+  return runPromise(prWatchDeliveryTest({
+    command: { threadId: "test-thread", messageId, createdBy: "agent", creationSource: source,
+      notification: { source: { kind: noticeKind } } },
+    projection: { runs: active ? [activeRun] : [],
+      providerThreads: [{ id: "provider-thread", providerSessionId: "session", goal: { status: goalStatus } }],
+      providerTurns: runningTurn ? [{ runAttemptId: "attempt", status: "running" }] : [],
+      messages: [], subagents: [] },
+    providerSessions: { get: () => t.succeed(option.some({ providerSession: { capabilities: {
+      turns: { supportsActiveSteering, activeSteeringInterruptsTools: interruptsTools },
+    } } })) },
+    stopReachedRun: () => t.succeed(stopped),
+    dispatchMode: queued, freshContext,
+  }));
+}
+
+assert.deepEqual(await route(), { type: "steer_active", targetRunId: "active-run" },
+  "A PR-watch update must reach an active goal instead of waiting behind that goal forever");
+for (const settings of [
+  { goalStatus: "complete" }, { active: false }, { runningTurn: false },
+  { supportsActiveSteering: false }, { interruptsTools: true }, { stopped: true },
+  { freshContext: true }, { source: "provider" }, { messageId: "message:other-monitor" },
+]) assert.deepEqual(await route(settings), queued, JSON.stringify(settings));
+assert.equal((await route({ noticeKind: "command", messageId: "command-complete" })).type, "steer_active");
+assert.deepEqual(await route({ noticeKind: "command", goalStatus: "complete" }), queued);
+assert.equal((await route({ noticeKind: "delegated_task", goalStatus: "complete" })).type, "steer_active");
+console.log("PR watch passed: outage retries/recovery/deduplication and safe delivery into active goals.");

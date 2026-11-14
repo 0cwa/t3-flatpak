@@ -24,12 +24,18 @@ with archive.open("rb") as stream:
     entry = dict(patch.entries(header))[patch.SERVER]
     stream.seek(payload + int(entry["offset"]))
     source = stream.read(entry["size"]).decode()
+    runtime_entry = dict(patch.entries(header))[patch.RUNTIME]
+    stream.seek(payload + int(runtime_entry["offset"]))
+    runtime = stream.read(runtime_entry["size"]).decode()
 if os.environ.get("T3_PR_WATCH_APPLY_PATCH") == "1":
     source = patch.patch_pr_watch(source)
-    patch.rewrite_archive(archive, {patch.SERVER: source.encode()})
+    runtime = patch.patch_pr_watch_delivery(runtime)
+    patch.rewrite_archive(archive, {patch.SERVER: source.encode(), patch.RUNTIME: runtime.encode()})
 assert patch.PR_WATCH_READ_AFTER in source
 assert patch.PR_WATCH_ACTIVITY_AFTER in source
 assert patch.PR_WATCH_READ_BEFORE not in source
+assert patch.PR_WATCH_GOAL_AFTER in runtime
+assert patch.PR_WATCH_GOAL_GATE_AFTER in runtime
 PY
 python3 "$tests_dir/instrument-preview-browser.py" "$test_root/app/bin/t3code/resources/app.asar"
 cp "$tests_dir/check-pr-watch.mjs" "$test_root/check-pr-watch.mjs"

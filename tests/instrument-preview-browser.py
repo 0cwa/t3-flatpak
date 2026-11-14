@@ -28,4 +28,23 @@ with archive.open("rb") as stream:
         if filename == patch.SERVER and b"isolatedPlaywright(requirePlaywright" not in original:
             raise ValueError("The installed preview bundle has not been patched")
         replacements[filename] = original + suffix.encode()
+    # Export the actual routing block, rather than reimplementing its policy in
+    # a fixture. All production bytes stay unchanged before the appended export.
+    entry = files[patch.RUNTIME]
+    stream.seek(payload + int(entry["offset"]))
+    original = stream.read(entry["size"])
+    text = original.decode()
+    start = '\t\tconst noticeKind = command.notification?.source.kind;'
+    end = '\t\tconst dispatchText = delegatedCompletion === void 0 ?'
+    if text.count(start) != 1 or text.count(end) != 1:
+        raise ValueError("The reviewed notification routing block moved")
+    policy = text[text.index(start):text.index(end)]
+    suffix = (
+        '\nexport const prWatchDeliveryTest = (input) => gen$1(function* () {\n'
+        'const {command, projection, providerSessions, stopReachedRun, freshContext, delegatedCompletion} = input;\n'
+        'let dispatchMode = input.dispatchMode;\n'
+        + policy + '\nreturn dispatchMode;\n});\n'
+        'export const prWatchDeliveryOptions = {some, none:none$1};\n'
+    )
+    replacements[patch.RUNTIME] = original + suffix.encode()
 patch.rewrite_archive(archive, replacements)
