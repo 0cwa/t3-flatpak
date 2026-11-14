@@ -10,6 +10,9 @@ jobs:
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
       options: --privileged
+      # SDK deployment updates cannot rename lower-layer overlay directories.
+      volumes:
+        - /var/lib/flatpak
     strategy:
       matrix:
         variant:

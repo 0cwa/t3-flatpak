@@ -24,6 +24,9 @@ jobs:
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
       options: --privileged
+      # Preserve the image's SDKs on a writable volume, outside overlayfs.
+      volumes:
+        - /var/lib/flatpak
     strategy:
       fail-fast: false
       matrix:
@@ -118,6 +121,9 @@ jobs:
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
       options: --privileged
+      # Preserve the image's SDKs on a writable volume, outside overlayfs.
+      volumes:
+        - /var/lib/flatpak
     steps:
       - name: Check out triggering commit
         uses: actions/checkout@v5

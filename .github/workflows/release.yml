@@ -21,6 +21,9 @@ jobs:
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
       options: --privileged
+      # Preserve the image's SDKs on a writable volume, outside overlayfs.
+      volumes:
+        - /var/lib/flatpak
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
