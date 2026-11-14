@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Patch the reviewed AppImage launch sites; refuse changed upstream bundles."""
+"""Patch reviewed AppImage integration sites; refuse changed upstream bundles."""
 
 import hashlib
 import json
@@ -11,6 +11,8 @@ import sys
 
 SERVER = "apps/server/dist/server-bi3w5spO.mjs"
 SERVER_SHA256 = "aa634dc27f7117c17e7c59944dd83b4fbfcbe8f09a06738be32cd96406a99435"
+RUNTIME = "apps/server/dist/runtimeLayer-BR0FRrjb.mjs"
+RUNTIME_SHA256 = "12a122fbadaef5afd3e2a22d85b4d4ad2fb31b8e6f30293945524d96c44edb7c"
 HELPER = "/app/lib/t3-preview/launch.mjs"
 REPLACEMENTS = (
     ('const loadPlaywright = () => requirePlaywright("playwright-core");',
@@ -35,6 +37,67 @@ ANDROID_MISSING_SDK_AFTER = (
     "--system-image 'system-images;android-36;google_apis;x86_64' "
     "(review and accept the SDK licenses when prompted)."
 )
+
+# Check-state delivery must not depend on a simultaneous comment API read.
+# Missing activity keeps remarksComplete false, so the next sweep retries it
+# without moving the persisted comment cursor or repeating check notifications.
+PR_WATCH_READ_BEFORE = (
+    'const read = isFailure$1(detailRead) ? failCause$1(detailRead.cause) : '
+    'isFailure$1(activityRead) ? failCause$1(activityRead.cause) : '
+    'succeed$2([detailRead.value, activityRead.value]);'
+)
+PR_WATCH_READ_AFTER = (
+    'const read = isFailure$1(detailRead) ? failCause$1(detailRead.cause) : '
+    'succeed$2([detailRead.value, isFailure$1(activityRead) ? none() : activityRead.value]);'
+)
+PR_WATCH_ACTIVITY_BEFORE = '\t\treadFailures.delete(group.key);\n\t\tconst [detail, activity] = read.value;'
+PR_WATCH_ACTIVITY_AFTER = (
+    '\t\treadFailures.delete(group.key);\n'
+    '\t\tif (isFailure$1(activityRead)) yield* logFailure("pull request watch comment read failed", '
+    '{ pullRequest: group.key })(activityRead.cause);\n'
+    '\t\tconst [detail, activity] = read.value;'
+)
+
+
+def patch_pr_watch(source):
+    for before, after in (
+        (PR_WATCH_READ_BEFORE, PR_WATCH_READ_AFTER),
+        (PR_WATCH_ACTIVITY_BEFORE, PR_WATCH_ACTIVITY_AFTER),
+    ):
+        if source.count(before) != 1:
+            raise ValueError("PR watch patch expected exactly one reviewed read site")
+        source = source.replace(before, after)
+    return source
+
+
+PR_WATCH_GOAL_BEFORE = (
+    '\t\tconst commandNotice = noticeKind === "command" && command.creationSource === "server";\n'
+    '\t\tif (!freshContext && (delegatedCompletion !== void 0 ? '
+    'delegatedCompletion.taskIds.every((id) => projection.subagents.find((task) => '
+    'task.id === id)?.completionWake === "always") : noticeKind === "delegated_task" || commandNotice)) {'
+)
+PR_WATCH_GOAL_AFTER = (
+    '\t\tconst commandNotice = noticeKind === "command" && command.creationSource === "server";\n'
+    '\t\tconst prWatchNotice = noticeKind === "monitor" && command.creationSource === "server" '
+    '&& command.messageId.startsWith("message:pr-watch:");\n'
+    '\t\tconst goalNotice = commandNotice || prWatchNotice;\n'
+    '\t\tif (!freshContext && (delegatedCompletion !== void 0 ? '
+    'delegatedCompletion.taskIds.every((id) => projection.subagents.find((task) => '
+    'task.id === id)?.completionWake === "always") : noticeKind === "delegated_task" || goalNotice)) {'
+)
+PR_WATCH_GOAL_GATE_BEFORE = '(!commandNotice || providerThread.goal?.status === "active")'
+PR_WATCH_GOAL_GATE_AFTER = '(!goalNotice || providerThread.goal?.status === "active")'
+
+
+def patch_pr_watch_delivery(source):
+    for before, after in (
+        (PR_WATCH_GOAL_BEFORE, PR_WATCH_GOAL_AFTER),
+        (PR_WATCH_GOAL_GATE_BEFORE, PR_WATCH_GOAL_GATE_AFTER),
+    ):
+        if source.count(before) != 1:
+            raise ValueError("PR watch delivery patch expected exactly one reviewed routing site")
+        source = source.replace(before, after)
+    return source
 
 
 def patch_server(source):
@@ -123,9 +186,19 @@ def patch_archive(filename):
             raise ValueError("Unreviewed T3 bundle: preview server module moved")
         stream.seek(payload + int(entry["offset"]))
         data = stream.read(entry["size"])
+        runtime_entry = files.get(RUNTIME)
+        if runtime_entry is None:
+            raise ValueError("Unreviewed T3 bundle: PR watch runtime module moved")
+        stream.seek(payload + int(runtime_entry["offset"]))
+        runtime_data = stream.read(runtime_entry["size"])
     if hashlib.sha256(data).hexdigest() != SERVER_SHA256:
         raise ValueError("Unreviewed T3 bundle: preview server hash changed; review isolation integration before updating")
-    rewrite_archive(filename, {SERVER: patch_server(data.decode()).encode()})
+    if hashlib.sha256(runtime_data).hexdigest() != RUNTIME_SHA256:
+        raise ValueError("Unreviewed T3 bundle: PR watch runtime hash changed; review delivery before updating")
+    rewrite_archive(filename, {
+        SERVER: patch_pr_watch(patch_server(data.decode())).encode(),
+        RUNTIME: patch_pr_watch_delivery(runtime_data.decode()).encode(),
+    })
 
 
 if __name__ == "__main__":

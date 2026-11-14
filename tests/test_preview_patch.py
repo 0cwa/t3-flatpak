@@ -7,6 +7,7 @@ from pathlib import Path
 import struct
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,6 +17,67 @@ SPEC.loader.exec_module(PATCH)
 
 
 class PreviewPatchTests(unittest.TestCase):
+    def test_pr_watch_reads_checks_independently_of_comments(self):
+        source = PATCH.PR_WATCH_READ_BEFORE + "\n" + PATCH.PR_WATCH_ACTIVITY_BEFORE
+        result = PATCH.patch_pr_watch(source)
+        self.assertIn(PATCH.PR_WATCH_READ_AFTER, result)
+        self.assertIn(PATCH.PR_WATCH_ACTIVITY_AFTER, result)
+        for site in (PATCH.PR_WATCH_READ_BEFORE, PATCH.PR_WATCH_ACTIVITY_BEFORE):
+            with self.subTest(site=site):
+                with self.assertRaisesRegex(ValueError, "exactly one reviewed read site"):
+                    PATCH.patch_pr_watch(source.replace(site, "changed upstream"))
+                with self.assertRaisesRegex(ValueError, "exactly one reviewed read site"):
+                    PATCH.patch_pr_watch(source + site)
+
+    def test_pr_watch_goal_delivery_preserves_routing_guards(self):
+        source = PATCH.PR_WATCH_GOAL_BEFORE + "\n" + PATCH.PR_WATCH_GOAL_GATE_BEFORE
+        result = PATCH.patch_pr_watch_delivery(source)
+        self.assertIn(PATCH.PR_WATCH_GOAL_AFTER, result)
+        self.assertIn(PATCH.PR_WATCH_GOAL_GATE_AFTER, result)
+        for site in (PATCH.PR_WATCH_GOAL_BEFORE, PATCH.PR_WATCH_GOAL_GATE_BEFORE):
+            with self.subTest(site=site):
+                with self.assertRaisesRegex(ValueError, "exactly one reviewed routing site"):
+                    PATCH.patch_pr_watch_delivery(source.replace(site, "changed upstream"))
+                with self.assertRaisesRegex(ValueError, "exactly one reviewed routing site"):
+                    PATCH.patch_pr_watch_delivery(source + site)
+
+    def test_archive_rejects_changed_runtime_before_rewriting_either_module(self):
+        scratch = Path.home() / "agent-scratch/t3-flatpak/preview-unit-tests"
+        scratch.mkdir(parents=True, exist_ok=True)
+        server = "\n".join([
+            *(before for before, _ in PATCH.REPLACEMENTS), PATCH.ANDROID_MISSING_SDK_BEFORE,
+            PATCH.PR_WATCH_READ_BEFORE, PATCH.PR_WATCH_ACTIVITY_BEFORE,
+        ]).encode()
+        runtime = (PATCH.PR_WATCH_GOAL_BEFORE + "\n" + PATCH.PR_WATCH_GOAL_GATE_BEFORE).encode()
+        header = {"files": {
+            "server": {"offset": "0", "size": len(server)},
+            "runtime": {"offset": str(len(server)), "size": len(runtime)},
+        }}
+        encoded = json.dumps(header).encode()
+        padding = b"\0" * (-(4 + len(encoded)) % 4)
+        size = 4 + len(encoded) + len(padding)
+        original = struct.pack("<4I", 4, size + 4, size, len(encoded)) + encoded + padding + server + runtime
+        with tempfile.TemporaryDirectory(dir=scratch) as directory:
+            archive = Path(directory) / "app.asar"
+            archive.write_bytes(original)
+            with mock.patch.multiple(PATCH, SERVER="server", RUNTIME="runtime",
+                                     SERVER_SHA256=hashlib.sha256(server).hexdigest(),
+                                     RUNTIME_SHA256="changed"):
+                with self.assertRaisesRegex(ValueError, "runtime hash changed"):
+                    PATCH.patch_archive(archive)
+            self.assertEqual(archive.read_bytes(), original)
+            with mock.patch.multiple(PATCH, SERVER="server", RUNTIME="runtime",
+                                     SERVER_SHA256=hashlib.sha256(server).hexdigest(),
+                                     RUNTIME_SHA256=hashlib.sha256(runtime).hexdigest()):
+                PATCH.patch_archive(archive)
+            with archive.open("rb") as stream:
+                updated, payload = PATCH.read_header(stream)
+                for filename, expected in (("server", PATCH.PR_WATCH_READ_AFTER),
+                                           ("runtime", PATCH.PR_WATCH_GOAL_AFTER)):
+                    entry = dict(PATCH.entries(updated))[filename]
+                    stream.seek(payload + int(entry["offset"]))
+                    self.assertIn(expected.encode(), stream.read(entry["size"]))
+
     def test_both_launch_paths_and_file_transfers_are_required(self):
         source = "#!/usr/bin/env node\n" + "\n".join(
             [*(before for before, _ in PATCH.REPLACEMENTS), PATCH.ANDROID_MISSING_SDK_BEFORE]
