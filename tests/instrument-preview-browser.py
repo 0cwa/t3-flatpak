@@ -10,7 +10,11 @@ patch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(patch)
 archive = Path(sys.argv[1])
 exports = {
-    patch.SERVER: "\nexport {ServerBrowserContexts, captureHtmlScreenshot, measureHtmlHeights, setInputFiles};\n",
+    patch.SERVER: (
+        "\nexport {ServerBrowserContexts, captureHtmlScreenshot, measureHtmlHeights, setInputFiles};\n"
+        "export const prWatchTest = {make:make$68, OrchestratorV2, ProjectionStoreV2, "
+        "PullRequestService, SecureRandom, provideService, gen, succeed, fail, sync};\n"
+    ),
     "apps/server/dist/ManagedEndpointRuntime-B-62Mn5X.mjs": "\nexport {layer$30 as previewTestNodeServices};\n",
 }
 replacements = {}

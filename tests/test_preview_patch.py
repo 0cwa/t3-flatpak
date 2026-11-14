@@ -16,6 +16,18 @@ SPEC.loader.exec_module(PATCH)
 
 
 class PreviewPatchTests(unittest.TestCase):
+    def test_pr_watch_reads_checks_independently_of_comments(self):
+        source = PATCH.PR_WATCH_READ_BEFORE + "\n" + PATCH.PR_WATCH_ACTIVITY_BEFORE
+        result = PATCH.patch_pr_watch(source)
+        self.assertIn(PATCH.PR_WATCH_READ_AFTER, result)
+        self.assertIn(PATCH.PR_WATCH_ACTIVITY_AFTER, result)
+        for site in (PATCH.PR_WATCH_READ_BEFORE, PATCH.PR_WATCH_ACTIVITY_BEFORE):
+            with self.subTest(site=site):
+                with self.assertRaisesRegex(ValueError, "exactly one reviewed read site"):
+                    PATCH.patch_pr_watch(source.replace(site, "changed upstream"))
+                with self.assertRaisesRegex(ValueError, "exactly one reviewed read site"):
+                    PATCH.patch_pr_watch(source + site)
+
     def test_both_launch_paths_and_file_transfers_are_required(self):
         source = "#!/usr/bin/env node\n" + "\n".join(
             [*(before for before, _ in PATCH.REPLACEMENTS), PATCH.ANDROID_MISSING_SDK_BEFORE]

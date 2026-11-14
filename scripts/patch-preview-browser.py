@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Patch the reviewed AppImage launch sites; refuse changed upstream bundles."""
+"""Patch reviewed AppImage integration sites; refuse changed upstream bundles."""
 
 import hashlib
 import json
@@ -35,6 +35,37 @@ ANDROID_MISSING_SDK_AFTER = (
     "--system-image 'system-images;android-36;google_apis;x86_64' "
     "(review and accept the SDK licenses when prompted)."
 )
+
+# Check-state delivery must not depend on a simultaneous comment API read.
+# Missing activity keeps remarksComplete false, so the next sweep retries it
+# without moving the persisted comment cursor or repeating check notifications.
+PR_WATCH_READ_BEFORE = (
+    'const read = isFailure$1(detailRead) ? failCause$1(detailRead.cause) : '
+    'isFailure$1(activityRead) ? failCause$1(activityRead.cause) : '
+    'succeed$2([detailRead.value, activityRead.value]);'
+)
+PR_WATCH_READ_AFTER = (
+    'const read = isFailure$1(detailRead) ? failCause$1(detailRead.cause) : '
+    'succeed$2([detailRead.value, isFailure$1(activityRead) ? none() : activityRead.value]);'
+)
+PR_WATCH_ACTIVITY_BEFORE = '\t\treadFailures.delete(group.key);\n\t\tconst [detail, activity] = read.value;'
+PR_WATCH_ACTIVITY_AFTER = (
+    '\t\treadFailures.delete(group.key);\n'
+    '\t\tif (isFailure$1(activityRead)) yield* logFailure("pull request watch comment read failed", '
+    '{ pullRequest: group.key })(activityRead.cause);\n'
+    '\t\tconst [detail, activity] = read.value;'
+)
+
+
+def patch_pr_watch(source):
+    for before, after in (
+        (PR_WATCH_READ_BEFORE, PR_WATCH_READ_AFTER),
+        (PR_WATCH_ACTIVITY_BEFORE, PR_WATCH_ACTIVITY_AFTER),
+    ):
+        if source.count(before) != 1:
+            raise ValueError("PR watch patch expected exactly one reviewed read site")
+        source = source.replace(before, after)
+    return source
 
 
 def patch_server(source):
@@ -125,7 +156,7 @@ def patch_archive(filename):
         data = stream.read(entry["size"])
     if hashlib.sha256(data).hexdigest() != SERVER_SHA256:
         raise ValueError("Unreviewed T3 bundle: preview server hash changed; review isolation integration before updating")
-    rewrite_archive(filename, {SERVER: patch_server(data.decode()).encode()})
+    rewrite_archive(filename, {SERVER: patch_pr_watch(patch_server(data.decode())).encode()})
 
 
 if __name__ == "__main__":
