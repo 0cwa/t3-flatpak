@@ -61,8 +61,8 @@ modules:
       - ln -s ../lib/nodejs/bin/corepack /app/bin/corepack
     sources:
       - type: archive
-        url: https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.xz
-        sha256: fd8e59d5a511510f6a298afb548f18c7d2b1be404d8b4a27d94fbe49f56cb2d6
+        url: https://nodejs.org/dist/v24.22.3/node-v24.22.3-linux-x64.tar.xz
+        sha256: 4f2b175a6d53a5c617a80dba2676238a0688cef28c6da4eba35c7d844e66fcfb
         only-arches: [x86_64]
 
   - name: git
@@ -72,8 +72,8 @@ modules:
       - make prefix=/app NO_GETTEXT=YesPlease NO_TCLTK=YesPlease NO_PERL=YesPlease NO_RUST=YesPlease install
     sources:
       - type: archive
-        url: https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.56.0.tar.xz
-        sha256: 26c56c296b38c0695b26fa95f475f1d01704d2d38e73465ca30b0b2f5dc789d3
+        url: https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.56.1.tar.xz
+        sha256: f0b0bf89264b9bd2e1c640363e7529643989da76281600473c50745cd34a607f
 
   - name: gh
     buildsystem: simple
@@ -127,8 +127,8 @@ modules:
       - install -m644 ssh_config /app/etc/ssh/ssh_config
     sources:
       - type: archive
-        url: https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.5p1.tar.gz
-        sha256: d44d28a839ea9daf969cc69150fde59910b2b39361dad81a3bd6cbd19218db11
+        url: https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.6p2.tar.gz
+        sha256: 9ae44872090cf2f06b3cf9ff147e7f16f309671340763ed2f99248398ae29d5b
 
   - name: t3code
     buildsystem: simple
