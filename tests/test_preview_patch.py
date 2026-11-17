@@ -17,6 +17,19 @@ SPEC.loader.exec_module(PATCH)
 
 
 class PreviewPatchTests(unittest.TestCase):
+    def test_android_hub_patch_rejects_moved_or_duplicated_sites(self):
+        sites = (PATCH.ANDROID_HUB_SPAWN_BEFORE, PATCH.ANDROID_SHUTDOWN_BEFORE)
+        source = "\n".join(sites)
+        result = PATCH.patch_android_device_operations(source)
+        self.assertIn(PATCH.ANDROID_HUB_SPAWN_AFTER, result)
+        self.assertIn(PATCH.ANDROID_SHUTDOWN_AFTER, result)
+        for site in sites:
+            with self.subTest(site=site):
+                with self.assertRaisesRegex(ValueError, "exactly one reviewed hub site"):
+                    PATCH.patch_android_device_operations(source.replace(site, "changed upstream"))
+                with self.assertRaisesRegex(ValueError, "exactly one reviewed hub site"):
+                    PATCH.patch_android_device_operations(source + site)
+
     def test_pr_watch_reads_checks_independently_of_comments(self):
         source = PATCH.PR_WATCH_READ_BEFORE + "\n" + PATCH.PR_WATCH_ACTIVITY_BEFORE
         result = PATCH.patch_pr_watch(source)
@@ -47,6 +60,7 @@ class PreviewPatchTests(unittest.TestCase):
         server = "\n".join([
             *(before for before, _ in PATCH.REPLACEMENTS), PATCH.ANDROID_MISSING_SDK_BEFORE,
             PATCH.PR_WATCH_READ_BEFORE, PATCH.PR_WATCH_ACTIVITY_BEFORE,
+            PATCH.ANDROID_HUB_SPAWN_BEFORE, PATCH.ANDROID_SHUTDOWN_BEFORE,
         ]).encode()
         runtime = (PATCH.PR_WATCH_GOAL_BEFORE + "\n" + PATCH.PR_WATCH_GOAL_GATE_BEFORE).encode()
         header = {"files": {
@@ -73,6 +87,8 @@ class PreviewPatchTests(unittest.TestCase):
             with archive.open("rb") as stream:
                 updated, payload = PATCH.read_header(stream)
                 for filename, expected in (("server", PATCH.PR_WATCH_READ_AFTER),
+                                           ("server", PATCH.ANDROID_HUB_SPAWN_AFTER),
+                                           ("server", PATCH.ANDROID_SHUTDOWN_AFTER),
                                            ("runtime", PATCH.PR_WATCH_GOAL_AFTER)):
                     entry = dict(PATCH.entries(updated))[filename]
                     stream.seek(payload + int(entry["offset"]))
