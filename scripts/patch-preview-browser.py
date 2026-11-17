@@ -37,6 +37,25 @@ ANDROID_MISSING_SDK_AFTER = (
     "--system-image 'system-images;android-36;google_apis;x86_64' "
     "(review and accept the SDK licenses when prompted)."
 )
+ANDROID_HUB_SPAWN_BEFORE = '\t\t\t\thubTool.entryPath,\n\t\t\t\t"--port",'
+ANDROID_HUB_SPAWN_AFTER = (
+    '\t\t\t\t...(hostPlatform === "linux" ? ["--import", "/app/lib/t3-android/device-hub.mjs"] : []),\n'
+    + ANDROID_HUB_SPAWN_BEFORE
+)
+ANDROID_SHUTDOWN_BEFORE = 'hubJson(request, HubActionResult, "shutdown")'
+# Expo's Android shutdown waits up to 30 seconds after the console command.
+ANDROID_SHUTDOWN_AFTER = 'hubJson(request, HubActionResult, "shutdown", device.platform === "android" ? seconds(45) : void 0)'
+
+
+def patch_android_device_operations(source):
+    for before, after in (
+        (ANDROID_HUB_SPAWN_BEFORE, ANDROID_HUB_SPAWN_AFTER),
+        (ANDROID_SHUTDOWN_BEFORE, ANDROID_SHUTDOWN_AFTER),
+    ):
+        if source.count(before) != 1:
+            raise ValueError("Android device patch expected exactly one reviewed hub site")
+        source = source.replace(before, after)
+    return source
 
 # Check-state delivery must not depend on a simultaneous comment API read.
 # Missing activity keeps remarksComplete false, so the next sweep retries it
@@ -196,7 +215,7 @@ def patch_archive(filename):
     if hashlib.sha256(runtime_data).hexdigest() != RUNTIME_SHA256:
         raise ValueError("Unreviewed T3 bundle: PR watch runtime hash changed; review delivery before updating")
     rewrite_archive(filename, {
-        SERVER: patch_pr_watch(patch_server(data.decode())).encode(),
+        SERVER: patch_android_device_operations(patch_pr_watch(patch_server(data.decode()))).encode(),
         RUNTIME: patch_pr_watch_delivery(runtime_data.decode()).encode(),
     })
 
