@@ -14,6 +14,7 @@ const initialWatch = () => ({
 await runPromise(t.gen(function* () {
   let watch = initialWatch();
   let status = "pending";
+  let optionalChecks = [];
   let commentsFail = false;
   let detailFails = false;
   let hasComment = false;
@@ -42,7 +43,7 @@ await runPromise(t.gen(function* () {
       state: "open", headSha: "abc123", baseBranch: "main", mergeability: "mergeable",
       viewer: "viewer", author: { login: "author" }, capabilities: { checksAlwaysReport: true },
       checks: [{ name: "build", status, required: true,
-        url: "https://github.com/test/repo/actions/runs/1" }],
+        url: "https://github.com/test/repo/actions/runs/1" }, ...optionalChecks],
     }),
     activity: () => commentsFail ? t.fail(new Error("Comment endpoint unavailable")) : t.succeed({
       comments: hasComment ? [comment] : [], reviewThreads: [],
@@ -98,6 +99,35 @@ await runPromise(t.gen(function* () {
   yield* reactor.sweep;
   assert.equal(commands.length, before, "Failed detail reads must not invent check updates");
   assert.equal(wakes.length, 3);
+  // PR #163: an already-reported optional failure must not mask completion.
+  detailFails = false;
+  commentsFail = false;
+  hasComment = false;
+  watch = initialWatch();
+  wakes.length = 0;
+  status = "success";
+  optionalChecks = [
+    { name: "Debug APK", status: "failure", required: false, url: null },
+    { name: "Unit tests", status: "pending", required: false, url: null },
+    { name: "Production build", status: "pending", required: false, url: null },
+  ];
+  reactor = yield* make();
+  yield* reactor.sweep;
+  assert.equal(wakes.length, 1);
+  optionalChecks[1].status = "success";
+  yield* reactor.sweep;
+  assert.equal(wakes.length, 1);
+  optionalChecks[2].status = "success";
+  yield* reactor.sweep;
+  assert.equal(wakes.length, 2, "Completion must wake even with an earlier optional failure");
+  assert.match(wakes[1].text, /Remaining checks finished/);
+  assert.match(wakes[1].text, /Unit tests: success/);
+  assert.match(wakes[1].text, /Debug APK: failure/);
+  yield* reactor.sweep;
+  reactor = yield* make();
+  yield* reactor.sweep;
+  assert.equal(wakes.length, 2, "Completion is reported once across restart");
+
 }));
 const queued = { type: "queue_after_active" };
 async function route(overrides = {}) {

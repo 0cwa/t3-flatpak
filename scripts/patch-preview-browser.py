@@ -89,6 +89,54 @@ def patch_pr_watch(source):
     return source
 
 
+PR_WATCH_COMPLETION_REPLACEMENTS = (
+    (
+        '\t\tconst settled = failed.length === 0 && awaitingApproval.length === 0 && checks.every((check) => check.status !== "pending");\n'
+        '\t\towedChecks = owed;',
+        '\t\tconst settled = owedChecks.length > 0 && owedChecks.every((name) => {\n'
+        '\t\t\tconst matching = checks.filter((check) => check.name === name);\n'
+        '\t\t\treturn matching.length > 0 && matching.every((check) => check.status !== "pending" && check.status !== "action-required");\n'
+        '\t\t});',
+    ),
+    (
+        '\t\t} else if (settled && owed.length > 0) {\n'
+        '\t\t\tchanges.push({\n'
+        '\t\t\t\tkind: "checks-passed",\n'
+        '\t\t\t\tcount: checks.length,\n'
+        '\t\t\t\trequired: false\n'
+        '\t\t\t});',
+        '\t\t} else if (passedNow && settled) {\n'
+        '\t\t\tchanges.push({\n'
+        '\t\t\t\tkind: "remaining-checks-finished",\n'
+        '\t\t\t\tchecks: checks.filter((check) => owedChecks.includes(check.name) || isFailedCheck(check))\n'
+        '\t\t\t});',
+    ),
+    (
+        '\t\tconst owed = passedNow && passed ? checks.filter((check) => check.required !== true && owedChecks.includes(check.name)).map((check) => check.name) : [];\n',
+        '',
+    ),
+    (
+        '\tcase "checks-passed": return [',
+        '\tcase "remaining-checks-finished": return [\x60- Remaining checks finished${context.commit}. Required checks passed.\x60, '
+        '...change.checks.map((check) => \x60  - ${check.name}: ${check.status}\x60)];\n'
+        '\tcase "checks-passed": return [',
+    ),
+    (
+        '\t"checks-passed": "checks passed",',
+        '\t"remaining-checks-finished": "remaining checks finished",\n'
+        '\t"checks-passed": "checks passed",',
+    ),
+)
+
+
+def patch_pr_watch_completion(source):
+    for before, after in PR_WATCH_COMPLETION_REPLACEMENTS:
+        if source.count(before) != 1:
+            raise ValueError("PR watch patch expected exactly one reviewed completion site")
+        source = source.replace(before, after)
+    return source
+
+
 PR_WATCH_GOAL_BEFORE = (
     '\t\tconst commandNotice = noticeKind === "command" && command.creationSource === "server";\n'
     '\t\tif (!freshContext && (delegatedCompletion !== void 0 ? '
@@ -215,7 +263,7 @@ def patch_archive(filename):
     if hashlib.sha256(runtime_data).hexdigest() != RUNTIME_SHA256:
         raise ValueError("Unreviewed T3 bundle: PR watch runtime hash changed; review delivery before updating")
     rewrite_archive(filename, {
-        SERVER: patch_android_device_operations(patch_pr_watch(patch_server(data.decode()))).encode(),
+        SERVER: patch_android_device_operations(patch_pr_watch_completion(patch_pr_watch(patch_server(data.decode())))).encode(),
         RUNTIME: patch_pr_watch_delivery(runtime_data.decode()).encode(),
     })
 
