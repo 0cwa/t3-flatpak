@@ -27,6 +27,9 @@ with archive.open("rb") as stream:
     runtime_entry = dict(patch.entries(header))[patch.RUNTIME]
     stream.seek(payload + int(runtime_entry["offset"]))
     runtime = stream.read(runtime_entry["size"]).decode()
+if os.environ.get("T3_PR_WATCH_APPLY_COMPLETION") == "1":
+    source = patch.patch_pr_watch_completion(source)
+    patch.rewrite_archive(archive, {patch.SERVER: source.encode()})
 if os.environ.get("T3_PR_WATCH_APPLY_PATCH") == "1":
     source = patch.patch_pr_watch(source)
     runtime = patch.patch_pr_watch_delivery(runtime)

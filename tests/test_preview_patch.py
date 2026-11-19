@@ -60,6 +60,7 @@ class PreviewPatchTests(unittest.TestCase):
         server = "\n".join([
             *(before for before, _ in PATCH.REPLACEMENTS), PATCH.ANDROID_MISSING_SDK_BEFORE,
             PATCH.PR_WATCH_READ_BEFORE, PATCH.PR_WATCH_ACTIVITY_BEFORE,
+            *(before for before, _ in PATCH.PR_WATCH_COMPLETION_REPLACEMENTS),
             PATCH.ANDROID_HUB_SPAWN_BEFORE, PATCH.ANDROID_SHUTDOWN_BEFORE,
         ]).encode()
         runtime = (PATCH.PR_WATCH_GOAL_BEFORE + "\n" + PATCH.PR_WATCH_GOAL_GATE_BEFORE).encode()
