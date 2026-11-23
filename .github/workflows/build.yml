@@ -31,7 +31,7 @@ jobs:
           arch: ${{ matrix.variant.arch }}
           verbose: true
 
-      - name: Check SSH/Pi boundaries and Pi persistence across sandbox runs
+      - name: Check SSH, Pi, and Antigravity boundaries and persistence
         shell: bash
         env:
           T3_DISPOSABLE_ACCOUNT: '1'

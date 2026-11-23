@@ -38,8 +38,11 @@ with archive.open("rb") as stream:
     entry = dict(patch.entries(header))[patch.SERVER]
     stream.seek(payload + int(entry["offset"]))
     server = stream.read(entry["size"]).decode()
-assert patch.ANDROID_MISSING_SDK_AFTER in server
-assert patch.ANDROID_MISSING_SDK_BEFORE not in server
+    runtime_entry = dict(patch.entries(header))[patch.RUNTIME]
+    stream.seek(payload + int(runtime_entry["offset"]))
+    runtime = stream.read(runtime_entry["size"]).decode()
+assert patch.ANDROID_MISSING_SDK_AFTER in runtime
+assert patch.ANDROID_MISSING_SDK_BEFORE not in runtime
 assert "isolatedPlaywright" in server and "stageUploads" in server
 print("Installed Devices error includes Android setup and diagnostics commands.")
 PY
@@ -59,7 +62,7 @@ import zipfile
 root = Path(sys.argv[1])
 archive = root / "browser.zip"
 browser = root / "browser"
-url = "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.38/linux64/chrome-headless-shell-linux64.zip"
+url = "https://storage.googleapis.com/chrome-for-testing-public/157.0.8103.78/linux64/chrome-headless-shell-linux64.zip"
 digest = hashlib.sha256()
 size = 0
 with urllib.request.urlopen(url, timeout=60) as response, archive.open("wb") as output:
@@ -67,8 +70,8 @@ with urllib.request.urlopen(url, timeout=60) as response, archive.open("wb") as 
         size += len(data)
         digest.update(data)
         output.write(data)
-assert size == 128_168_542
-assert digest.hexdigest() == "deafffa74660b34853a4119c361fd427ac8c9fcb62db51ddb8a797cd83a4ba2d"
+assert size == 127_965_683
+assert digest.hexdigest() == "f90329720fb61e5a76da9b6b509b6ad12a484c9c5df0359403e935177c6d153a"
 with zipfile.ZipFile(archive) as source:
     for entry in source.infolist():
         assert entry.filename.startswith("chrome-headless-shell-linux64/")

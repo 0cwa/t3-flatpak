@@ -122,6 +122,28 @@ This checks filesystem persistence and isolation only. It does not download or
 execute Antigravity, sign in, test ACP communication, discover models, or make
 a provider request. It must not run against an account with real T3 data.
 
+## Antigravity runtime regression
+
+`bash tests/run-antigravity-runtime-check.sh` tests the actual provider code
+from a disposable copy of the installed 0.1.11 archive, with networking disabled.
+The profile helper must create distinct private directories, suppress direct
+browser launching through the sandbox's Node runtime, and keep selected
+credentials separate from ambient Google environment variables. The launch
+helper must use `acp --gemini-dir ... --app-data-dir antigravity-acp` and disable
+the managed CLI's own updater.
+
+An offline ACP fixture checks the shipped client's subprocess arguments,
+working directory, environment, T3 identity, and authentication-required
+handling. It never downloads Google code, signs in, or sends a model prompt.
+CI runs it alongside the PR-watch and preview checks after the Flatpak build.
+
+For a manual account test, install the PR's bundle under a disposable account,
+enable Antigravity, install its managed runtime, and sign in through provider
+settings. Confirm models load, run a small task in an explicitly mounted test
+project with approvals enabled, restart T3 Code, and check that the account,
+thread, and shared skills remain available. This real Google sign-in and model
+request are separate from the automated regressions.
+
 ## PR watch runtime regression
 
 `bash tests/run-pr-watch-check.sh` exercises the installed PR watcher in a
@@ -136,7 +158,9 @@ updates enter an active goal through existing noninterrupting steering, while
 ordinary queued delivery remains in place for idle threads, inactive goals,
 stopped runs, and providers that cannot steer safely.
 
-For an older installation that already has the preview isolation patch, use
-`T3_PR_WATCH_APPLY_PATCH=1 bash tests/run-pr-watch-check.sh` to apply the PR watch
-correction to the disposable copy only. CI tests the newly built installation
-without this option.
+For a 0.1.11 installation that already has the preview isolation patch, use
+`T3_PR_WATCH_APPLY_PATCH=1 bash tests/run-pr-watch-check.sh` to apply the goal
+delivery correction to the disposable copy only, or
+`T3_PR_WATCH_APPLY_COMPLETION=1` for the optional-check completion correction.
+CI tests the newly built installation without these options. The archive
+patches and instrumentation require the reviewed 0.1.11 bundle.

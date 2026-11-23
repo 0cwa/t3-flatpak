@@ -19,7 +19,7 @@ SPEC.loader.exec_module(PATCH)
 class PreviewPatchTests(unittest.TestCase):
     def test_android_hub_patch_rejects_moved_or_duplicated_sites(self):
         sites = (PATCH.ANDROID_HUB_SPAWN_BEFORE, PATCH.ANDROID_SHUTDOWN_BEFORE)
-        source = "\n".join(sites)
+        source = "\n".join((*sites, PATCH.ANDROID_MISSING_SDK_BEFORE))
         result = PATCH.patch_android_device_operations(source)
         self.assertIn(PATCH.ANDROID_HUB_SPAWN_AFTER, result)
         self.assertIn(PATCH.ANDROID_SHUTDOWN_AFTER, result)
@@ -30,17 +30,16 @@ class PreviewPatchTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "exactly one reviewed hub site"):
                     PATCH.patch_android_device_operations(source + site)
 
-    def test_pr_watch_reads_checks_independently_of_comments(self):
-        source = PATCH.PR_WATCH_READ_BEFORE + "\n" + PATCH.PR_WATCH_ACTIVITY_BEFORE
-        result = PATCH.patch_pr_watch(source)
-        self.assertIn(PATCH.PR_WATCH_READ_AFTER, result)
-        self.assertIn(PATCH.PR_WATCH_ACTIVITY_AFTER, result)
-        for site in (PATCH.PR_WATCH_READ_BEFORE, PATCH.PR_WATCH_ACTIVITY_BEFORE):
-            with self.subTest(site=site):
-                with self.assertRaisesRegex(ValueError, "exactly one reviewed read site"):
-                    PATCH.patch_pr_watch(source.replace(site, "changed upstream"))
-                with self.assertRaisesRegex(ValueError, "exactly one reviewed read site"):
-                    PATCH.patch_pr_watch(source + site)
+    def test_antigravity_identity_patch_rejects_moved_or_duplicated_sites(self):
+        source = PATCH.ANTIGRAVITY_CLIENT_BEFORE
+        result = PATCH.patch_antigravity_client(source)
+        self.assertIn('name: "t3-code"', result)
+        self.assertNotIn('name: "zed"', result)
+        self.assertNotIn('OPEN_MODEL_ACCESS_RELEASE', result)
+        for changed in ("changed upstream", source + source):
+            with self.subTest(source=changed):
+                with self.assertRaisesRegex(ValueError, "exactly one reviewed client identity"):
+                    PATCH.patch_antigravity_client(changed)
 
     def test_pr_watch_goal_delivery_preserves_routing_guards(self):
         source = PATCH.PR_WATCH_GOAL_BEFORE + "\n" + PATCH.PR_WATCH_GOAL_GATE_BEFORE
@@ -55,15 +54,14 @@ class PreviewPatchTests(unittest.TestCase):
                     PATCH.patch_pr_watch_delivery(source + site)
 
     def test_archive_rejects_changed_runtime_before_rewriting_either_module(self):
-        scratch = Path.home() / "agent-scratch/t3-flatpak/preview-unit-tests"
-        scratch.mkdir(parents=True, exist_ok=True)
         server = "\n".join([
-            *(before for before, _ in PATCH.REPLACEMENTS), PATCH.ANDROID_MISSING_SDK_BEFORE,
-            PATCH.PR_WATCH_READ_BEFORE, PATCH.PR_WATCH_ACTIVITY_BEFORE,
-            *(before for before, _ in PATCH.PR_WATCH_COMPLETION_REPLACEMENTS),
-            PATCH.ANDROID_HUB_SPAWN_BEFORE, PATCH.ANDROID_SHUTDOWN_BEFORE,
+            *(before for before, _ in PATCH.REPLACEMENTS), PATCH.ANTIGRAVITY_CLIENT_BEFORE,
         ]).encode()
-        runtime = (PATCH.PR_WATCH_GOAL_BEFORE + "\n" + PATCH.PR_WATCH_GOAL_GATE_BEFORE).encode()
+        runtime = "\n".join([
+            PATCH.PR_WATCH_GOAL_BEFORE, PATCH.PR_WATCH_GOAL_GATE_BEFORE,
+            *(before for before, _ in PATCH.PR_WATCH_COMPLETION_REPLACEMENTS),
+            PATCH.ANDROID_HUB_SPAWN_BEFORE, PATCH.ANDROID_SHUTDOWN_BEFORE, PATCH.ANDROID_MISSING_SDK_BEFORE,
+        ]).encode()
         header = {"files": {
             "server": {"offset": "0", "size": len(server)},
             "runtime": {"offset": str(len(server)), "size": len(runtime)},
@@ -72,7 +70,7 @@ class PreviewPatchTests(unittest.TestCase):
         padding = b"\0" * (-(4 + len(encoded)) % 4)
         size = 4 + len(encoded) + len(padding)
         original = struct.pack("<4I", 4, size + 4, size, len(encoded)) + encoded + padding + server + runtime
-        with tempfile.TemporaryDirectory(dir=scratch) as directory:
+        with tempfile.TemporaryDirectory() as directory:
             archive = Path(directory) / "app.asar"
             archive.write_bytes(original)
             with mock.patch.multiple(PATCH, SERVER="server", RUNTIME="runtime",
@@ -87,9 +85,11 @@ class PreviewPatchTests(unittest.TestCase):
                 PATCH.patch_archive(archive)
             with archive.open("rb") as stream:
                 updated, payload = PATCH.read_header(stream)
-                for filename, expected in (("server", PATCH.PR_WATCH_READ_AFTER),
-                                           ("server", PATCH.ANDROID_HUB_SPAWN_AFTER),
-                                           ("server", PATCH.ANDROID_SHUTDOWN_AFTER),
+                for filename, expected in (("server", PATCH.ANTIGRAVITY_CLIENT_AFTER),
+                                           ("runtime", PATCH.ANDROID_HUB_SPAWN_AFTER),
+                                           ("runtime", PATCH.ANDROID_SHUTDOWN_AFTER),
+                                           ("runtime", PATCH.ANDROID_MISSING_SDK_AFTER),
+                                           ("runtime", PATCH.PR_WATCH_COMPLETION_REPLACEMENTS[0][1]),
                                            ("runtime", PATCH.PR_WATCH_GOAL_AFTER)):
                     entry = dict(PATCH.entries(updated))[filename]
                     stream.seek(payload + int(entry["offset"]))
@@ -97,7 +97,7 @@ class PreviewPatchTests(unittest.TestCase):
 
     def test_both_launch_paths_and_file_transfers_are_required(self):
         source = "#!/usr/bin/env node\n" + "\n".join(
-            [*(before for before, _ in PATCH.REPLACEMENTS), PATCH.ANDROID_MISSING_SDK_BEFORE]
+            before for before, _ in PATCH.REPLACEMENTS
         )
         result = PATCH.patch_server(source)
         self.assertTrue(result.startswith("#!/usr/bin/env node\nimport "))
@@ -112,22 +112,20 @@ class PreviewPatchTests(unittest.TestCase):
 
     def test_missing_sdk_reason_is_replaced_once_with_packaged_commands(self):
         source = "\n".join(
-            [*(before for before, _ in PATCH.REPLACEMENTS), PATCH.ANDROID_MISSING_SDK_BEFORE]
+            [PATCH.ANDROID_HUB_SPAWN_BEFORE, PATCH.ANDROID_SHUTDOWN_BEFORE, PATCH.ANDROID_MISSING_SDK_BEFORE]
         )
-        result = PATCH.patch_server(source)
+        result = PATCH.patch_android_device_operations(source)
         self.assertNotIn(PATCH.ANDROID_MISSING_SDK_BEFORE, result)
         self.assertIn(PATCH.ANDROID_MISSING_SDK_AFTER, result)
         self.assertIn("t3code-android-diagnostics", result)
         self.assertIn("t3code-android-setup", result)
         with self.assertRaisesRegex(ValueError, "exactly one missing-SDK reason"):
-            PATCH.patch_server(source.replace(PATCH.ANDROID_MISSING_SDK_BEFORE, "changed upstream"))
+            PATCH.patch_android_device_operations(source.replace(PATCH.ANDROID_MISSING_SDK_BEFORE, "changed upstream"))
         with self.assertRaisesRegex(ValueError, "exactly one missing-SDK reason"):
-            PATCH.patch_server(source + PATCH.ANDROID_MISSING_SDK_BEFORE)
+            PATCH.patch_android_device_operations(source + PATCH.ANDROID_MISSING_SDK_BEFORE)
 
     def test_archive_rewrite_preserves_other_files_and_updates_integrity(self):
-        scratch = Path.home() / "agent-scratch/t3-flatpak/preview-unit-tests"
-        scratch.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=scratch) as directory:
+        with tempfile.TemporaryDirectory() as directory:
             archive = Path(directory) / "app.asar"
             header = {"files": {
                 "first": {"size": 3, "offset": "0", "integrity": {"blockSize": 2}},

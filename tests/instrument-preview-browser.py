@@ -12,10 +12,10 @@ archive = Path(sys.argv[1])
 exports = {
     patch.SERVER: (
         "\nexport {ServerBrowserContexts, captureHtmlScreenshot, measureHtmlHeights, setInputFiles};\n"
-        "export const prWatchTest = {make:make$68, OrchestratorV2, ProjectionStoreV2, "
-        "PullRequestService, SecureRandom, provideService, gen, succeed, fail, sync};\n"
+        "export const prWatchTest = {make:make$92, OrchestratorV2, ProjectionStoreV2, "
+        "PullRequestService, SecureRandom, provideService, gen, succeed, fail:fail$3, sync};\n"
     ),
-    "apps/server/dist/ManagedEndpointRuntime-B-62Mn5X.mjs": "\nexport {layer$30 as previewTestNodeServices};\n",
+    "apps/server/dist/ManagedEndpointRuntime-DBgt8khC.mjs": "\nexport {layer$43 as previewTestNodeServices};\n",
 }
 replacements = {}
 with archive.open("rb") as stream:
@@ -35,7 +35,7 @@ with archive.open("rb") as stream:
     original = stream.read(entry["size"])
     text = original.decode()
     start = '\t\tconst noticeKind = command.notification?.source.kind;'
-    end = '\t\tconst dispatchText = delegatedCompletion === void 0 ?'
+    end = '\t\tconst notification = command.manualContinuationOfRunId === void 0 ?'
     if text.count(start) != 1 or text.count(end) != 1:
         raise ValueError("The reviewed notification routing block moved")
     policy = text[text.index(start):text.index(end)]

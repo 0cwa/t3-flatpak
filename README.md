@@ -209,10 +209,19 @@ Google's official agent through the
 the Flatpak sandbox. The Antigravity IDE and a host installation are not
 required.
 
+Use the T3 Code 0.1.11 package or newer. The previous 0.1.9 package downloaded
+Antigravity 1.4.5, which upstream now marks as unsupported. This package uses
+the current CLI installer and sign-in flow from
+[T3 Code 0.1.11](https://github.com/pingdotgg/t3code/releases/tag/v0.1.11).
+Updating the Flatpak does not install an agent automatically; use the provider's
+**Install** or **Update** action to replace an older managed runtime.
+
 Open **Settings > Providers**, select the local environment, and enable
 **Antigravity**. Leave **Binary path** blank and use **Install** there, then
 choose **Sign in**. Finish the Google sign-in in your browser and wait for
-T3 Code to confirm account access and load the available models. The separate
+T3 Code to confirm account access and load the available models. If Google
+shows a code, paste it or the page's full address into T3 Code's sign-in dialog.
+The separate
 `t3code-install-provider` helper installs npm-based providers; Antigravity's
 download, validation, and updates belong to its provider settings.
 
@@ -220,6 +229,11 @@ For a Gemini API key, select that sign-in method in the Antigravity provider
 settings, enter the key, and choose **Connect**. T3 Code keeps the key outside
 its settings file. An ambient `GEMINI_API_KEY` does not override the method
 selected for that provider instance.
+
+The managed provider uses its own profile in app data for sign-in; it does not
+need access to the host's Antigravity credentials or Secret Service. The agent
+runs with the same mounted projects as T3 Code. The model list comes from
+Google for your account and this client; T3 Code identifies itself as T3 Code.
 
 The managed runtime and each instance's sign-in are already stored under the
 persisted `~/.t3` directory. Global Antigravity skills and rules use the
@@ -240,6 +254,13 @@ This maps the directory to T3 Code's app data; it does not expose the host's
 `~/.gemini`. If `--filesystem=home` has been granted separately, Flatpak ignores
 these persistence mappings and uses the host home instead.
 
+If setup fails, first update the Flatpak, clear any custom **Binary path**,
+and install or update the managed runtime in provider settings. Use **Refresh
+provider status** after signing in. Installing a separate `agy` on the host
+does not update the sandbox's managed runtime. Missing models, account access,
+or quota errors must be resolved through the Google account or provider
+message; changing Flatpak filesystem permissions does not grant model access.
+
 ## Persistent data
 
 Without home directory access, `$HOME` inside the sandbox is a temporary
@@ -250,7 +271,7 @@ that app directory:
 
 | Inside the sandbox | Stored on the host | Contents | Mechanism |
 |---|---|---|---|
-| `~/.t3` | `~/.var/app/com.t3tools.t3code/.t3` | T3 Code settings, keybindings, threads (`state.sqlite`), login tokens, secrets, worktrees | `--persist=.t3` |
+| `~/.t3` | `~/.var/app/com.t3tools.t3code/.t3` | T3 Code settings, keybindings, threads (`userdata/statev2.sqlite`), login tokens, secrets, worktrees | `--persist=.t3` |
 | `~/.pi` | `~/.var/app/com.t3tools.t3code/.pi` | Pi settings, sessions, and provider credentials (including `agent/auth.json`) | `--persist=.pi` |
 | `~/.codex` | `~/.var/app/com.t3tools.t3code/.codex` | Codex CLI config and auth | `--persist=.codex` |
 | `~/.claude` | `~/.var/app/com.t3tools.t3code/.claude` | Claude Code config, including `.claude.json` | `--persist=.claude` + `CLAUDE_CONFIG_DIR` |
@@ -531,6 +552,13 @@ AppImage so application
 updates come from the Flatpak remote, not from T3 Code writing into `/app` at
 runtime. Keep `x-checker-data` pointed at `latest-linux.yml`; it is packaging
 metadata, not a runtime update channel.
+
+The updater accepts the current `T3-Code-x86_64.AppImage` asset name and the
+older versioned filename. Both stay pinned to a release-tag URL and verified
+SHA-256. An AppImage update still requires reviewing the exact bundle hashes
+and patch sites in `scripts/patch-preview-browser.py`; a changed bundle fails
+the build until the preview, Android, Antigravity, and PR-watch integrations
+are checked and the installed regressions pass.
 
 The scheduled `Update Bundled Runtime Pins` workflow keeps the sandbox-local
 Node.js, Git, and OpenSSH source pins current independently from T3 Code

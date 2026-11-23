@@ -31,8 +31,9 @@ async function fetchSha256(url, headers = {}) {
 }
 
 function findLinuxAppImage(release) {
+  const legacyName = `T3-Code-${release.tag_name.replace(/^v/, "")}-x86_64.AppImage`;
   const assets = release.assets.filter((asset) =>
-    /^T3-Code-[^/]+-x86_64\.AppImage$/.test(asset.name),
+    asset.name === "T3-Code-x86_64.AppImage" || asset.name === legacyName,
   );
 
   if (assets.length !== 1) {
@@ -49,7 +50,7 @@ function sha256FromDigest(asset) {
 
 function replaceSource(manifest, tagName, assetName, sha256) {
   const sourcePattern = new RegExp(
-    "url: https://github\\.com/pingdotgg/t3code/releases/download/[^/]+/T3-Code-[^/]+-x86_64\\.AppImage\\n" +
+    "url: https://github\\.com/pingdotgg/t3code/releases/download/[^/]+/T3-Code-(?:[^/]+-)?x86_64\\.AppImage\\n" +
       "        dest-filename: T3-Code\\.AppImage\\n" +
       "        sha256: [a-f0-9]{64}\\n" +
       "        only-arches: \\[x86_64\\]",
@@ -80,14 +81,14 @@ async function main() {
   const release = JSON.parse(await fetchText(apiUrl, headers));
   const tagName = release.tag_name;
 
-  if (!tagName) {
-    fail("Latest T3 Code release did not include a tag name");
+  if (typeof tagName !== "string" || !/^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(tagName)) {
+    fail("Latest T3 Code release did not include an immutable version tag");
   }
 
   const asset = findLinuxAppImage(release);
   const githubDigestSha256 = sha256FromDigest(asset);
 
-  if (!asset.browser_download_url.endsWith(`/${tagName}/${asset.name}`)) {
+  if (asset.browser_download_url !== `https://github.com/${repo}/releases/download/${tagName}/${asset.name}`) {
     fail(`Unexpected download URL for ${asset.name}: ${asset.browser_download_url}`);
   }
 
