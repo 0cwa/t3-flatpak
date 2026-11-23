@@ -2,6 +2,8 @@
 import assert from "node:assert/strict";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { t, services, runPromise, provide } from "./antigravity-test-bindings.mjs";
 
 const [root] = process.argv.slice(2);
@@ -34,6 +36,20 @@ const baseEnv = {
 };
 
 try {
+  // Use the installer's command and exact listing/extraction flags. This also
+  // exercises gzip and binary stdout, which a tar --version check would miss.
+  const tar = t.cliArchiveTarCommand("linux", {});
+  const archive = path.join(root, "antigravity-fixture.tar.gz");
+  const runTar = (args) => promisify(execFile)(tar, args, {
+    env: { PATH: process.env.PATH, LC_ALL: "C" }, encoding: "buffer", timeout: 10_000,
+  });
+  assert.equal((await runTar(["-tzf", archive])).stdout.toString(), "antigravity\n");
+  const types = (await runTar(["-tvzf", archive])).stdout.toString().trim();
+  assert.equal(types.split(/\r?\n/).length, 1);
+  assert(types.startsWith("-"), "Installer archive must contain one regular file");
+  assert.deepEqual((await runTar(["-xOzf", archive, "antigravity"])).stdout,
+    Buffer.concat([Buffer.from("Antigravity archive fixture\n"), Buffer.from([0, 255, 128, 10])]));
+
   for (const version of [undefined, null, "", "invalid", "1.4.5", "1.5.0", "1.5.15"]) {
     const identity = t.antigravityClientInfo(version);
     assert.equal(identity.name, "t3-code", `Client identity must remain honest for ${version}`);
@@ -143,7 +159,7 @@ require("node:readline").createInterface({ input: process.stdin }).on("line", li
   assert.equal(requests[0].params.clientInfo.name, "t3-code");
   assert(requests.some((request) => request.method === "authenticate"));
   assert(!requests.some((request) => request.method === "session/new"));
-  console.log("Antigravity passed: private profiles, browser hook, modern CLI launch, honest identity, and required sign-in.");
+  console.log("Antigravity passed: tar/gzip extraction, private profiles, browser hook, modern CLI launch, honest identity, and required sign-in.");
 } finally {
   clearTimeout(watchdog);
 }

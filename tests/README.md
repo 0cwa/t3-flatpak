@@ -126,7 +126,8 @@ a provider request. It must not run against an account with real T3 data.
 
 `bash tests/run-antigravity-runtime-check.sh` tests the actual provider code
 from a disposable copy of the installed 0.1.11 archive, with networking disabled.
-The profile helper must create distinct private directories, suppress direct
+The installer must list and extract a small gzip-compressed archive using the
+runtime's `tar`, preserving its binary contents. The profile helper must create distinct private directories, suppress direct
 browser launching through the sandbox's Node runtime, and keep selected
 credentials separate from ambient Google environment variables. The launch
 helper must use `acp --gemini-dir ... --app-data-dir antigravity-acp` and disable

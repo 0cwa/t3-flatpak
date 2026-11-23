@@ -14,9 +14,11 @@ mkdir "$test_root/home" "$test_root/tmp"
 # changed, and the actual production functions remain the functions under test.
 python3 - "$test_root/app/bin/t3code/resources/app.asar" "$tests_dir" "$test_root" <<'PY'
 import importlib.util
+import io
 import json
 from pathlib import Path
 import sys
+import tarfile
 
 spec = importlib.util.spec_from_file_location(
     "patch", Path(sys.argv[2]).parent / "scripts/patch-preview-browser.py"
@@ -32,7 +34,7 @@ exports = {
         "prepareAntigravityProfile, buildAntigravityAcpSpawnInput, "
         "resolveAntigravityInstanceDirectories, antigravityClientInfo, "
         "antigravityAuthConfigIssue, isAntigravitySignInRequiredError, "
-        "makeAntigravityAcpRuntime, ChildProcessSpawner, "
+        "makeAntigravityAcpRuntime, ChildProcessSpawner, cliArchiveTarCommand, "
         "gen, scoped, map, catch:catch_, succeed};\n"
     ),
     managed: "\nexport const antigravityTestServices = mergeAll(layer$43, layerWebCrypto$1, layerWebCrypto$2);\n",
@@ -57,6 +59,13 @@ base = "/app/bin/t3code/resources/app.asar/"
     "export {antigravityTestServices as services} from " + json.dumps(base + managed) + ";\n"
     "export {ls as runPromise, Xo as provide} from " + json.dumps(base + schema) + ";\n"
 )
+# The installed runtime must supply tar and its gzip support, not just the SDK.
+with tarfile.open(Path(sys.argv[3]) / "antigravity-fixture.tar.gz", "w:gz") as fixture:
+    data = b"Antigravity archive fixture\n\x00\xff\x80\n"
+    member = tarfile.TarInfo("antigravity")
+    member.size = len(data)
+    member.mode = 0o755
+    fixture.addfile(member, io.BytesIO(data))
 PY
 cp "$tests_dir/check-antigravity-runtime.mjs" "$test_root/check-antigravity-runtime.mjs"
 flatpak run --user --app-path="$test_root/app" --sandbox --unshare=network \
