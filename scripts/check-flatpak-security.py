@@ -78,7 +78,7 @@ def unsafe_filesystem(value):
             break
 
     protected_paths = (
-        "~/.ssh", "~/.gnupg", "~/.pi", "~/.t3", "~/.codex", "~/.claude",
+        "~/.ssh", "~/.gnupg", "~/.pi", "~/.gemini", "~/.t3", "~/.codex", "~/.claude",
         "~/.local/bin", "~/.config/gnupg", "xdg-config/gnupg"
     )
     # Reject a protected directory, its children, and a parent exposing it.

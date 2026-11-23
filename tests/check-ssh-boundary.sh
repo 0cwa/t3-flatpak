@@ -58,6 +58,7 @@ assert devices == {'dri', 'kvm'}, f'Expected only the narrow dri and kvm grants:
 persistent = context.get('persistent', '').split(';')
 assert '.ssh' in persistent, 'App-private SSH state must persist'
 assert '.pi' in persistent, 'App-private Pi settings and credentials must persist'
+assert '.gemini' in persistent, 'App-private Antigravity user skills and settings must persist'
 assert '.local/bin' in persistent, 'App-private ~/.local/bin must persist'
 filesystems = context.get('filesystems', '').split(';')
 for grant in filesystems:
@@ -86,7 +87,7 @@ for grant in filesystems:
             path = '~/' + relative if relative else '~'
             break
     protected_paths = (
-        '~/.ssh', '~/.gnupg', '~/.pi', '~/.t3', '~/.codex', '~/.claude',
+        '~/.ssh', '~/.gnupg', '~/.pi', '~/.gemini', '~/.t3', '~/.codex', '~/.claude',
         '~/.local/bin', '~/.config/gnupg', 'xdg-config/gnupg',
     )
     assert not any(
@@ -135,4 +136,5 @@ flatpak run --user --command=sh "$app" -ec '
         exit 1
     fi'
 bash "$(dirname -- "${BASH_SOURCE[0]}")/check-pi-persistence.sh" "$app"
-printf '%s\n' 'Default confinement, Pi persistence, and opt-in SSH-agent signing checks passed.'
+bash "$(dirname -- "${BASH_SOURCE[0]}")/check-antigravity-persistence.sh" "$app"
+printf '%s\n' 'Default confinement, Pi and Antigravity persistence, and opt-in SSH-agent signing checks passed.'

@@ -201,6 +201,45 @@ sandbox. That code can access T3 Code app data and any project paths explicitly
 mounted into the Flatpak later. It does not gain broad host filesystem access
 unless you grant it.
 
+## Google Antigravity
+
+Use T3 Code's built-in Antigravity provider. Its managed installation runs
+Google's official agent through the
+[Agent Client Protocol (ACP)](https://antigravity.google/docs/cli/acp), inside
+the Flatpak sandbox. The Antigravity IDE and a host installation are not
+required.
+
+Open **Settings > Providers**, select the local environment, and enable
+**Antigravity**. Leave **Binary path** blank and use **Install** there, then
+choose **Sign in**. Finish the Google sign-in in your browser and wait for
+T3 Code to confirm account access and load the available models. The separate
+`t3code-install-provider` helper installs npm-based providers; Antigravity's
+download, validation, and updates belong to its provider settings.
+
+For a Gemini API key, select that sign-in method in the Antigravity provider
+settings, enter the key, and choose **Connect**. T3 Code keeps the key outside
+its settings file. An ambient `GEMINI_API_KEY` does not override the method
+selected for that provider instance.
+
+The managed runtime and each instance's sign-in are already stored under the
+persisted `~/.t3` directory. Global Antigravity skills and rules use the
+separately persisted, app-private `~/.gemini` directory. Inside a T3 Code
+terminal, put shared skills in `~/.gemini/config/skills` or
+`~/.gemini/antigravity-cli/skills`. Project skills belong in the mounted
+project's `.agents/skills` or `.gemini/skills`. A host Antigravity installation's
+settings and credentials are separate.
+
+For an older Flatpak without `.gemini` persistence, add the mapping before
+creating shared skills, then restart T3 Code:
+
+```bash
+flatpak override --user --persist=.gemini com.t3tools.t3code
+```
+
+This maps the directory to T3 Code's app data; it does not expose the host's
+`~/.gemini`. If `--filesystem=home` has been granted separately, Flatpak ignores
+these persistence mappings and uses the host home instead.
+
 ## Persistent data
 
 Without home directory access, `$HOME` inside the sandbox is a temporary
@@ -215,6 +254,7 @@ that app directory:
 | `~/.pi` | `~/.var/app/com.t3tools.t3code/.pi` | Pi settings, sessions, and provider credentials (including `agent/auth.json`) | `--persist=.pi` |
 | `~/.codex` | `~/.var/app/com.t3tools.t3code/.codex` | Codex CLI config and auth | `--persist=.codex` |
 | `~/.claude` | `~/.var/app/com.t3tools.t3code/.claude` | Claude Code config, including `.claude.json` | `--persist=.claude` + `CLAUDE_CONFIG_DIR` |
+| `~/.gemini` | `~/.var/app/com.t3tools.t3code/.gemini` | Antigravity global skills and rules; managed provider sign-ins stay under `~/.t3` | `--persist=.gemini` |
 | `~/.local/bin` | `~/.var/app/com.t3tools.t3code/.local/bin` | launchers from native installers such as Claude Code's; not the host `~/.local/bin` | `--persist=.local/bin` |
 | `~/.ssh` | `~/.var/app/com.t3tools.t3code/.ssh` | sandbox-local SSH configuration and verified `known_hosts`; not the host SSH directory | `--persist=.ssh` |
 | `$XDG_CONFIG_HOME/git/config` | `~/.var/app/com.t3tools.t3code/config/git/config` | `git config --global` settings | launcher creates the file so git prefers it over `~/.gitconfig` |
@@ -222,7 +262,7 @@ that app directory:
 | `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME`, `$XDG_CACHE_HOME` | `~/.var/app/com.t3tools.t3code/{config,data,cache}` | Electron profile, OpenCode, npm globals and cache | Flatpak default |
 
 The app-specific state is separate from the host's `~/.t3`, `~/.pi`,
-`~/.codex`, `~/.claude`, `~/.ssh`, and `~/.gitconfig`. Host credential and tool
+`~/.codex`, `~/.claude`, `~/.gemini`, `~/.ssh`, and `~/.gitconfig`. Host credential and tool
 directories are not exposed. If you grant `--filesystem=home`, Flatpak ignores
 `--persist` and uses the host home directly. From a terminal opened on a
 project, `cd .pi` looks for a `.pi` directory inside that project; use

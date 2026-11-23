@@ -99,6 +99,29 @@ scratch-only invocations. It does not install SDK packages, accept licenses,
 create an AVD, or require KVM hardware. The permission check inspects installed
 metadata and requires only `dri` and `kvm` device grants.
 
+## Antigravity persistence check
+
+The installed sandbox boundary check also runs
+`check-antigravity-persistence.sh`. To run it against an already installed
+user Flatpak, use a disposable OS account:
+
+```bash
+T3_DISPOSABLE_ACCOUNT=1 bash tests/check-antigravity-persistence.sh com.t3tools.t3code
+```
+
+Two separate Flatpak invocations verify that app-private global skills in
+`~/.gemini/config/skills` and `~/.gemini/antigravity-cli/skills` survive, while
+a synthetic host `~/.gemini` canary stays hidden. Unique fixtures also check
+the managed-runtime directory under `~/.t3/tools/antigravity-acp/linux-x64/versions`
+and a private provider profile under `~/.t3/userdata/providers/antigravity`.
+The second invocation checks runtime read-only modes, profile directory
+permissions, and a synthetic token file at mode `600`. The script removes its
+fixture children on exit and does not overwrite an active runtime or profile.
+
+This checks filesystem persistence and isolation only. It does not download or
+execute Antigravity, sign in, test ACP communication, discover models, or make
+a provider request. It must not run against an account with real T3 data.
+
 ## PR watch runtime regression
 
 `bash tests/run-pr-watch-check.sh` exercises the installed PR watcher in a
