@@ -48,24 +48,30 @@ function sha256FromDigest(asset) {
   return match ? match[1] : null;
 }
 
-function replaceSource(manifest, tagName, assetName, sha256) {
+function appImageSource(manifest) {
   const sourcePattern = new RegExp(
-    "url: https://github\\.com/pingdotgg/t3code/releases/download/[^/]+/T3-Code-(?:[^/]+-)?x86_64\\.AppImage\\n" +
+    "url: (https://github\\.com/pingdotgg/t3code/releases/download/[^/]+/T3-Code-(?:[^/]+-)?x86_64\\.AppImage)\\n" +
       "        dest-filename: T3-Code\\.AppImage\\n" +
-      "        sha256: [a-f0-9]{64}\\n" +
+      "        sha256: ([a-f0-9]{64})\\n" +
       "        only-arches: \\[x86_64\\]",
+    "g",
   );
+  const sources = [...manifest.matchAll(sourcePattern)];
+  if (sources.length !== 1) {
+    fail(`Expected exactly one x86_64 AppImage source block in ${manifestPath}; found ${sources.length}`);
+  }
+  return { text: sources[0][0], url: sources[0][1], sha256: sources[0][2] };
+}
+
+function replaceSource(manifest, tagName, assetName, sha256) {
+  const source = appImageSource(manifest);
   const replacement =
     `url: https://github.com/pingdotgg/t3code/releases/download/${tagName}/${assetName}\n` +
     "        dest-filename: T3-Code.AppImage\n" +
     `        sha256: ${sha256}\n` +
     "        only-arches: [x86_64]";
 
-  if (!sourcePattern.test(manifest)) {
-    fail(`Could not find x86_64 AppImage source block in ${manifestPath}`);
-  }
-
-  return manifest.replace(sourcePattern, replacement);
+  return manifest.replace(source.text, replacement);
 }
 
 async function main() {
@@ -81,6 +87,9 @@ async function main() {
   const release = JSON.parse(await fetchText(apiUrl, headers));
   const tagName = release.tag_name;
 
+  if (release.draft || release.prerelease) {
+    fail("The automatic update channel only accepts published stable T3 Code releases");
+  }
   if (typeof tagName !== "string" || !/^v?\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(tagName)) {
     fail("Latest T3 Code release did not include an immutable version tag");
   }
@@ -92,19 +101,25 @@ async function main() {
     fail(`Unexpected download URL for ${asset.name}: ${asset.browser_download_url}`);
   }
 
-  const sha256 = await fetchSha256(asset.browser_download_url, headers);
-  if (githubDigestSha256 && githubDigestSha256 !== sha256) {
-    fail(`Downloaded ${asset.name} sha256 ${sha256} did not match GitHub asset digest ${githubDigestSha256}`);
-  }
-
   const manifest = fs.readFileSync(manifestPath, "utf8");
-  fs.writeFileSync(manifestPath, replaceSource(manifest, tagName, asset.name, sha256));
+  const current = appImageSource(manifest);
+  // Hourly checks need only the release metadata when the already-verified
+  // source is unchanged. New or republished assets are still downloaded and
+  // hashed locally; a release without a published digest also takes that path.
+  if (githubDigestSha256 && current.url === asset.browser_download_url && current.sha256 === githubDigestSha256) {
+    console.log(`T3 Code ${tagName} is current; its release URL and checksum are unchanged`);
+  } else {
+    const sha256 = await fetchSha256(asset.browser_download_url, headers);
+    if (githubDigestSha256 && githubDigestSha256 !== sha256) {
+      fail(`Downloaded ${asset.name} sha256 ${sha256} did not match GitHub asset digest ${githubDigestSha256}`);
+    }
+    fs.writeFileSync(manifestPath, replaceSource(manifest, tagName, asset.name, sha256));
+    console.log(`Updated ${manifestPath} to T3 Code ${tagName}`);
+  }
 
   if (process.env.GITHUB_OUTPUT) {
     fs.appendFileSync(process.env.GITHUB_OUTPUT, `version=${tagName}\n`);
   }
-
-  console.log(`Updated ${manifestPath} to T3 Code ${tagName}`);
 }
 
 main().catch((error) => fail(error.stack || error.message));
