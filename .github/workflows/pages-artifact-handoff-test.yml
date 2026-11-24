@@ -32,6 +32,7 @@ jobs:
           printf '[core]\nmode=archive-z2\n' > repo-x86_64/config
           tar -czf t3code-ostree-x86_64.tar.gz repo-x86_64
           printf '%s\n' 'app/com.t3tools.t3code/x86_64/master' > t3code-ref-x86_64.txt
+          printf '%s\n' '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef' > t3code-commit-x86_64.txt
 
       - name: Upload fixture with production artifact identity
         uses: actions/upload-artifact@v7
@@ -40,6 +41,7 @@ jobs:
           path: |
             t3code-ostree-x86_64.tar.gz
             t3code-ref-x86_64.txt
+            t3code-commit-x86_64.txt
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
@@ -58,11 +60,14 @@ jobs:
           artifact_dir="inputs/t3code-ostree-${arch}"
           archive="$artifact_dir/t3code-ostree-${arch}.tar.gz"
           ref_file="$artifact_dir/t3code-ref-${arch}.txt"
+          commit_file="$artifact_dir/t3code-commit-${arch}.txt"
           expected_ref="app/com.t3tools.t3code/${arch}/master"
 
           test -s "$archive"
           test -s "$ref_file"
           test "$(<"$ref_file")" = "$expected_ref"
+          test "$(<"$commit_file")" = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+          [[ "$(<"$commit_file")" =~ ^[a-f0-9]{64}$ ]]
           test ! -e "inputs/t3code-ostree-${arch}.tar.gz"
           test ! -e "inputs/t3code-ref-${arch}.txt"
 

@@ -2,12 +2,11 @@ name: Update T3 Code AppImage
 
 on:
   schedule:
-    - cron: "20 6 * * *"
+    - cron: "23 * * * *"
   workflow_dispatch:
 
 permissions:
-  contents: write
-  actions: write
+  contents: read
 
 concurrency:
   group: update-t3code-appimage
@@ -15,27 +14,34 @@ concurrency:
 
 jobs:
   update:
-    name: Check latest upstream AppImage
+    name: Prepare latest upstream candidate
+    if: ${{ github.ref == 'refs/heads/main' }}
     runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.update.outputs.version }}
+      tag: ${{ steps.prepare.outputs.tag }}
+      base_sha: ${{ steps.prepare.outputs.base_sha }}
+      manifest_sha256: ${{ steps.prepare.outputs.manifest_sha256 }}
+      needs_validation: ${{ steps.prepare.outputs.needs_validation }}
     steps:
       - uses: actions/checkout@v5
         with:
           ref: main
           fetch-depth: 0
-          token: ${{ secrets.GH_TOKEN || github.token }}
+          persist-credentials: false
 
       - uses: actions/setup-node@v5
         with:
           node-version: 24
 
-      - name: Update manifest pins
+      - name: Prepare latest manifest
         id: update
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/update-t3code-appimage.js
 
-      - name: Commit update and tag release
-        id: publish
+      - name: Identify candidate and existing release
+        id: prepare
         env:
           VERSION: ${{ steps.update.outputs.version }}
         run: |
@@ -45,39 +51,185 @@ jobs:
             v*) tag="t3code-${VERSION}" ;;
             *) tag="t3code-v${VERSION}" ;;
           esac
+          git check-ref-format "refs/tags/$tag"
+          base_sha="$(git rev-parse --verify 'HEAD^{commit}')"
+          manifest_sha256="$(sha256sum com.t3tools.t3code.yml | cut -d ' ' -f 1)"
+          remote_tag="$(git ls-remote --tags origin "refs/tags/$tag")"
+          needs_validation=true
 
-          echo "tag=$tag" >> "$GITHUB_OUTPUT"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
+          # A repeated check needs no rebuild, but can recover a missing dispatch.
           if git diff --quiet -- com.t3tools.t3code.yml; then
-            if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
-              echo "Manifest already points at T3 Code ${VERSION}, and release tag ${tag} already exists."
-              exit 0
+            if [ -n "$remote_tag" ]; then
+              needs_validation=false
             fi
+          elif [ -n "$remote_tag" ]; then
+            echo "Release tag $tag already exists for different manifest inputs." >&2
+            exit 1
+          fi
+          git diff --exit-code -- . ':(exclude)com.t3tools.t3code.yml'
 
-            echo "Manifest already points at T3 Code ${VERSION}; creating missing release tag ${tag}."
-            git tag -a "$tag" -m "T3 Code ${VERSION}"
-            git push origin "$tag"
+          {
+            echo "tag=$tag"
+            echo "base_sha=$base_sha"
+            echo "manifest_sha256=$manifest_sha256"
+            echo "needs_validation=$needs_validation"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Upload candidate manifest
+        if: steps.prepare.outputs.needs_validation == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: t3code-update-candidate
+          path: com.t3tools.t3code.yml
+          if-no-files-found: error
+          retention-days: 1
+
+  validate:
+    name: Build and test candidate before publication
+    needs: update
+    if: needs.update.outputs.needs_validation == 'true'
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-26.08
+      options: --privileged
+      volumes:
+        - /var/lib/flatpak
+    outputs:
+      tree_sha: ${{ steps.candidate.outputs.tree_sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.update.outputs.base_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download candidate manifest
+        uses: actions/download-artifact@v8
+        with:
+          name: t3code-update-candidate
+          path: ${{ runner.temp }}/t3-update-candidate
+
+      - name: Apply exact candidate inputs
+        id: candidate
+        shell: bash
+        env:
+          MANIFEST_SHA256: ${{ needs.update.outputs.manifest_sha256 }}
+        run: |
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          candidate="$RUNNER_TEMP/t3-update-candidate/com.t3tools.t3code.yml"
+          printf '%s  %s\n' "$MANIFEST_SHA256" "$candidate" | sha256sum --check --status
+          cp -- "$candidate" com.t3tools.t3code.yml
+          git add com.t3tools.t3code.yml
+          echo "tree_sha=$(git write-tree)" >> "$GITHUB_OUTPUT"
+          echo "SOURCE_DATE_EPOCH=$(git show -s --format=%ct HEAD)" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Check candidate source
+        run: bash tests/check-publication.sh source
+
+      - name: Build candidate bundle
+        uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: t3code-candidate.flatpak
+          manifest-path: com.t3tools.t3code.yml
+          arch: x86_64
+          build-dir: builddir-candidate
+          repo-dir: repo-candidate
+          state-dir: .flatpak-builder-candidate
+          cache: false
+          restore-cache: false
+          upload-artifact: false
+          verbose: true
+
+      - name: Check installed candidate
+        env:
+          T3_DISPOSABLE_ACCOUNT: '1'
+        run: bash tests/check-publication.sh installed t3code-candidate.flatpak
+
+      - name: Verify candidate stayed unchanged
+        shell: bash
+        env:
+          VALIDATED_TREE: ${{ steps.candidate.outputs.tree_sha }}
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          test "$(git write-tree)" = "$VALIDATED_TREE"
+
+  publish:
+    name: Publish validated candidate and reconcile workflows
+    needs: [update, validate]
+    if: ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && needs.update.result == 'success' && (needs.update.outputs.needs_validation == 'false' || needs.validate.result == 'success') }}
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.update.outputs.base_sha }}
+          fetch-depth: 0
+          token: ${{ secrets.GH_TOKEN || github.token }}
+
+      - name: Download validated candidate manifest
+        if: needs.update.outputs.needs_validation == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: t3code-update-candidate
+          path: ${{ runner.temp }}/t3-update-candidate
+
+      - name: Commit validated update and tag release
+        id: publish
+        env:
+          VERSION: ${{ needs.update.outputs.version }}
+          RELEASE_TAG: ${{ needs.update.outputs.tag }}
+          BASE_SHA: ${{ needs.update.outputs.base_sha }}
+          MANIFEST_SHA256: ${{ needs.update.outputs.manifest_sha256 }}
+          NEEDS_VALIDATION: ${{ needs.update.outputs.needs_validation }}
+          VALIDATED_TREE: ${{ needs.validate.outputs.tree_sha }}
+        run: |
+          set -euo pipefail
+          tag="$RELEASE_TAG"
+          test "$(git rev-parse --verify 'HEAD^{commit}')" = "$BASE_SHA"
+          remote_main="$(git ls-remote --heads origin refs/heads/main | cut -f 1)"
+          if [ "$remote_main" != "$BASE_SHA" ]; then
+            echo 'main changed during this update; the next scheduled check will retry.' >&2
+            exit 1
+          fi
+          remote_tag="$(git ls-remote --tags origin "refs/tags/$tag")"
+          if [ "$NEEDS_VALIDATION" = false ]; then
+            test -n "$remote_tag"
+            echo "Manifest and release tag $tag are already current."
             exit 0
           fi
 
-          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
-            echo "Release tag ${tag} already exists." >&2
-            exit 1
-          fi
-
+          test "$NEEDS_VALIDATION" = true
+          test -n "$VALIDATED_TREE"
+          test -z "$remote_tag"
+          candidate="$RUNNER_TEMP/t3-update-candidate/com.t3tools.t3code.yml"
+          printf '%s  %s\n' "$MANIFEST_SHA256" "$candidate" | sha256sum --check --status
+          cp -- "$candidate" com.t3tools.t3code.yml
           git add com.t3tools.t3code.yml
-          git commit -m "chore: update T3 Code AppImage to ${VERSION}"
+          git diff --exit-code
+          test "$(git write-tree)" = "$VALIDATED_TREE"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # A missing tag for unchanged inputs also gets a commit, so main's
+          # expected old SHA participates in the same atomic compare-and-swap.
+          git commit --allow-empty -m "chore: release T3 Code ${VERSION}" -m 'Assisted by: ChatGPT'
           git tag -a "$tag" -m "T3 Code ${VERSION}"
-          # Publish both refs together so a rejected tag cannot strand main.
-          git push --atomic origin HEAD:refs/heads/main "refs/tags/$tag"
+          git push --atomic --force-with-lease="refs/heads/main:$BASE_SHA" \
+            origin HEAD:refs/heads/main "refs/tags/$tag"
 
       - name: Reconcile downstream workflows for the default token
         env:
           GH_TOKEN: ${{ github.token }}
           CUSTOM_TOKEN: ${{ secrets.GH_TOKEN }}
-          RELEASE_TAG: ${{ steps.publish.outputs.tag }}
+          RELEASE_TAG: ${{ needs.update.outputs.tag }}
           PUBLISH_FLATPAK_REPO: ${{ vars.PUBLISH_FLATPAK_REPO }}
         run: |
           set -euo pipefail

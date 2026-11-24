@@ -3,9 +3,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import http from "node:http";
 import { spawn } from "node:child_process";
-import { ServerBrowserContexts, captureHtmlScreenshot, measureHtmlHeights, setInputFiles } from "/app/bin/t3code/resources/app.asar/apps/server/dist/server-8K5Ixyrs.mjs";
-import { previewTestNodeServices } from "/app/bin/t3code/resources/app.asar/apps/server/dist/ManagedEndpointRuntime-DBgt8khC.mjs";
-import { ls as runPromise, Xo as provide } from "/app/bin/t3code/resources/app.asar/apps/server/dist/Schema-BBjlTC3i.mjs";
+import { ServerBrowserContexts, captureHtmlScreenshot, measureHtmlHeights, setInputFiles,
+  previewTestNodeServices, runPromise, provide } from "./preview-test-bindings.mjs";
 import { saveDownload, stageUploads } from "/app/lib/t3-preview/adapter.mjs";
 
 const [root, executable] = process.argv.slice(2);

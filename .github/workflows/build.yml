@@ -21,6 +21,11 @@ jobs:
     runs-on: ${{ matrix.variant.runner }}
     steps:
       - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+      - name: Check source and publication gates
+        run: bash tests/check-publication.sh source
       - name: Check host Spawn portal prerequisites
         run: bash tests/with-flatpak-portal.sh true
       - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
@@ -31,17 +36,11 @@ jobs:
           arch: ${{ matrix.variant.arch }}
           verbose: true
 
-      - name: Check SSH, Pi, and Antigravity boundaries and persistence
+      - name: Check installed sandbox and runtime integrations
         shell: bash
         env:
           T3_DISPOSABLE_ACCOUNT: '1'
-        run: bash tests/check-ssh-boundary.sh t3code.flatpak
-
-      - name: Check installed runtime tools and optional extensions
-        shell: bash
-        env:
-          T3_DISPOSABLE_ACCOUNT: '1'
-        run: bash tests/run-tool-extension-check.sh t3code.flatpak
+        run: bash tests/check-publication.sh installed t3code.flatpak
 
       - name: Create checksum
         run: sha256sum t3code.flatpak > t3code.flatpak.sha256

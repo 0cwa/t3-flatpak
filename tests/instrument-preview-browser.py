@@ -1,50 +1,15 @@
 #!/usr/bin/env python3
-"""Expose shipped functions only in the disposable runtime-test archive."""
+"""Expose shipped functions only in a disposable runtime-test archive."""
 
-import importlib.util
+import argparse
 from pathlib import Path
-import sys
 
-spec = importlib.util.spec_from_file_location("preview_patch", Path(__file__).resolve().parents[1] / "scripts/patch-preview-browser.py")
-patch = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(patch)
-archive = Path(sys.argv[1])
-exports = {
-    patch.SERVER: (
-        "\nexport {ServerBrowserContexts, captureHtmlScreenshot, measureHtmlHeights, setInputFiles};\n"
-        "export const prWatchTest = {make:make$92, OrchestratorV2, ProjectionStoreV2, "
-        "PullRequestService, SecureRandom, provideService, gen, succeed, fail:fail$3, sync};\n"
-    ),
-    "apps/server/dist/ManagedEndpointRuntime-DBgt8khC.mjs": "\nexport {layer$43 as previewTestNodeServices};\n",
-}
-replacements = {}
-with archive.open("rb") as stream:
-    header, payload = patch.read_header(stream)
-    files = dict(patch.entries(header))
-    for filename, suffix in exports.items():
-        entry = files[filename]
-        stream.seek(payload + int(entry["offset"]))
-        original = stream.read(entry["size"])
-        if filename == patch.SERVER and b"isolatedPlaywright(requirePlaywright" not in original:
-            raise ValueError("The installed preview bundle has not been patched")
-        replacements[filename] = original + suffix.encode()
-    # Export the actual routing block, rather than reimplementing its policy in
-    # a fixture. All production bytes stay unchanged before the appended export.
-    entry = files[patch.RUNTIME]
-    stream.seek(payload + int(entry["offset"]))
-    original = stream.read(entry["size"])
-    text = original.decode()
-    start = '\t\tconst noticeKind = command.notification?.source.kind;'
-    end = '\t\tconst notification = command.manualContinuationOfRunId === void 0 ?'
-    if text.count(start) != 1 or text.count(end) != 1:
-        raise ValueError("The reviewed notification routing block moved")
-    policy = text[text.index(start):text.index(end)]
-    suffix = (
-        '\nexport const prWatchDeliveryTest = (input) => gen$1(function* () {\n'
-        'const {command, projection, providerSessions, stopReachedRun, freshContext, delegatedCompletion} = input;\n'
-        'let dispatchMode = input.dispatchMode;\n'
-        + policy + '\nreturn dispatchMode;\n});\n'
-        'export const prWatchDeliveryOptions = {some, none:none$1};\n'
-    )
-    replacements[patch.RUNTIME] = original + suffix.encode()
-patch.rewrite_archive(archive, replacements)
+from runtime_module_bindings import instrument_archive
+
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("archive", type=Path)
+parser.add_argument("output_directory", type=Path)
+parser.add_argument("--archive-base", default="/app/bin/t3code/resources/app.asar")
+args = parser.parse_args()
+instrument_archive(args.archive, args.output_directory, args.archive_base)

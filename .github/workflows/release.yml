@@ -13,7 +13,7 @@ on:
         type: string
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
@@ -30,6 +30,14 @@ jobs:
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
           fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Check release source
+        run: bash tests/check-publication.sh source
 
       - name: Set stable build timestamp
         shell: bash
@@ -47,6 +55,7 @@ jobs:
           fi
 
           echo "SOURCE_DATE_EPOCH=$source_date_epoch" >> "$GITHUB_ENV"
+          echo "RELEASE_SOURCE_SHA=$commit" >> "$GITHUB_ENV"
           echo "Using SOURCE_DATE_EPOCH=$source_date_epoch from commit $commit."
 
       - name: Build release bundle
@@ -62,6 +71,11 @@ jobs:
           restore-cache: false
           upload-artifact: false
           verbose: true
+
+      - name: Check installed release bundle
+        env:
+          T3_DISPOSABLE_ACCOUNT: '1'
+        run: bash tests/check-publication.sh installed t3code-x86_64.flatpak
 
       - name: Verify release inputs and bundle
         shell: bash
@@ -108,8 +122,9 @@ jobs:
             echo "Workflow: $GITHUB_WORKFLOW"
             echo "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
             echo "Git ref: $GITHUB_REF"
-            echo "Git SHA: $GITHUB_SHA"
+            echo "Git SHA: ${RELEASE_SOURCE_SHA:?Missing checked-out source commit}"
             echo "Source date epoch: ${SOURCE_DATE_EPOCH:-unset}"
+            echo "Source and installed publication checks: passed"
             echo
             echo "Manifest SHA256:"
             sha256sum com.t3tools.t3code.yml
@@ -141,6 +156,8 @@ jobs:
     name: Publish GitHub release
     needs: build
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
     steps:
       - name: Download verified bundles
         uses: actions/download-artifact@v8

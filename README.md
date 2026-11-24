@@ -536,29 +536,45 @@ discarded between successful publishes.
 
 GitHub Actions builds the x86_64 Flatpak bundle on pushes to `main`, pull
 requests, and manual dispatches. Release tags matching `v*` or `t3code-v*` run
-a verified release workflow that checks the manifest uses an immutable upstream AppImage
-URL and pinned SHA-256 before publishing bundle artifacts.
+a verified release workflow that checks the source inputs and runs the full
+installed-app regressions before publishing bundle artifacts. The Pages
+repository build passes the same checks before its separate signing job.
 
-The scheduled `Update T3 Code AppImage` workflow checks the latest upstream
-GitHub release, downloads the Linux x86_64 AppImage, computes its SHA-256
-locally, and publishes a manifest change and its matching `t3code-v...` release
-tag atomically. With the default token, it checks for existing build,
+**This package follows the latest stable T3 Code release automatically.** The
+`Update T3 Code AppImage` workflow checks upstream every hour. When the release
+URL and GitHub asset digest match the manifest, it skips the AppImage download
+and a redundant build. New assets are downloaded and hashed locally.
+
+A changed candidate must pass the source tests, Flatpak build, sandbox and
+persistence checks, and installed provider/browser/runtime regressions before
+the updater changes `main` or creates a release tag. Publication uses the exact
+validated manifest and base commit. A failed candidate leaves the published
+version in place; a concurrent change to `main` stops promotion so the next
+hourly check can validate against the new base. Successful updates publish
+their manifest commit and matching `t3code-v...` release tag atomically.
+
+With the default token, the updater checks for existing build,
 permission-regression, release, and opted-in Pages runs and requests only
 missing workflows. Rerunning the updater recovers interrupted dispatches;
 rerun an existing failed downstream run from Actions. With `GH_TOKEN`
 configured, pushes trigger downstream workflows automatically instead.
-The Flatpak build removes upstream Electron updater metadata from the extracted
-AppImage so application
-updates come from the Flatpak remote, not from T3 Code writing into `/app` at
-runtime. Keep `x-checker-data` pointed at `latest-linux.yml`; it is packaging
-metadata, not a runtime update channel.
 
-The updater accepts the current `T3-Code-x86_64.AppImage` asset name and the
-older versioned filename. Both stay pinned to a release-tag URL and verified
-SHA-256. An AppImage update still requires reviewing the exact bundle hashes
-and patch sites in `scripts/patch-preview-browser.py`; a changed bundle fails
-the build until the preview, Android, Antigravity, and PR-watch integrations
-are checked and the installed regressions pass.
+The versioned source URL and SHA-256 in the manifest record the exact input
+that was tested for each build. They are updated automatically; they are not
+a policy to keep users on a particular T3 version. The updater accepts both
+the current `T3-Code-x86_64.AppImage` filename and the older versioned filename.
+
+The Flatpak build removes upstream Electron updater metadata from the extracted
+AppImage. Application updates arrive through the Flatpak remote, which replaces
+the read-only application as a complete tested build. Keep `x-checker-data`
+pointed at `latest-linux.yml`; it is packaging metadata.
+
+The integration patcher and runtime tests discover the active server modules
+and generated identifiers from the AppImage. Harmless chunk renames and
+identifier renumbering do not require per-release edits. Required patch sites
+must still match exactly once, and the full behavioral tests must pass. A real
+upstream integration change can therefore stop an update with an actionable
+compatibility failure, while ordinary compatible releases publish automatically.
 
 The scheduled `Update Bundled Runtime Pins` workflow keeps the sandbox-local
 Node.js, Git, and OpenSSH source pins current independently from T3 Code

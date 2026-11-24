@@ -11,6 +11,31 @@ OS account or ephemeral CI container. A separate Flatpak installation still
 shares `~/.var/app` state; do not use an account with real T3 Code data or
 credentials. The initial build downloads the SDK, runtime, and Electron base.
 
+## Publication gates
+
+Candidate updates, GitHub releases, and the Pages repository use the same
+source and installed-app checks:
+
+```bash
+bash tests/check-publication.sh source
+T3_DISPOSABLE_ACCOUNT=1 bash tests/check-publication.sh installed /path/to/t3code.flatpak
+```
+
+The source check creates a disposable Python environment, installs the locked
+checker dependency, runs all Python fixtures and the Node file-transfer test,
+and verifies permissions, artifact handoff, and shell syntax. The installed
+check verifies host-portal prerequisites, the sandbox boundary and persisted
+state, then all tool-extension, provider, browser, Android, and PR-watch checks.
+It must run under the disposable-account requirement above.
+
+Automatic update candidates pass these gates before changing `main` or
+creating their release tag. Release and Pages jobs test their own exact bundle
+or repository before uploading, publishing, or signing it. Fixture tests also
+verify that compatible chunk renames and generated-symbol changes are accepted,
+while ambiguous or incompatible integration sites leave the archive unchanged.
+
+## Installed tool checks
+
 CI runs the installed, shared-library, and removed-extension checks after
 building the application bundle. To run the same check with an existing bundle:
 
@@ -125,7 +150,7 @@ a provider request. It must not run against an account with real T3 data.
 ## Antigravity runtime regression
 
 `bash tests/run-antigravity-runtime-check.sh` tests the actual provider code
-from a disposable copy of the installed 0.1.11 archive, with networking disabled.
+from a disposable copy of the installed archive, with networking disabled.
 The installer must list and extract a small gzip-compressed archive using the
 runtime's `tar`, preserving its binary contents. The profile helper must create distinct private directories, suppress direct
 browser launching through the sandbox's Node runtime, and keep selected
@@ -159,9 +184,11 @@ updates enter an active goal through existing noninterrupting steering, while
 ordinary queued delivery remains in place for idle threads, inactive goals,
 stopped runs, and providers that cannot steer safely.
 
-For a 0.1.11 installation that already has the preview isolation patch, use
+For a compatible installation that already has the preview isolation patch, use
 `T3_PR_WATCH_APPLY_PATCH=1 bash tests/run-pr-watch-check.sh` to apply the goal
 delivery correction to the disposable copy only, or
 `T3_PR_WATCH_APPLY_COMPLETION=1` for the optional-check completion correction.
-CI tests the newly built installation without these options. The archive
-patches and instrumentation require the reviewed 0.1.11 bundle.
+CI tests the newly built installation without these options. The instrumentation
+discovers the active modules and generated identifiers from the actual archive;
+it rejects missing or ambiguous contracts rather than requiring a specific
+T3 version or chunk filename.
