@@ -42,6 +42,14 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+
+      - name: Check repository source
+        run: bash tests/check-publication.sh source
 
       - name: Set stable build timestamp
         shell: bash
@@ -82,10 +90,28 @@ jobs:
           expected_ref="app/${APP_ID}/${{ matrix.variant.arch }}/master"
           ostree rev-parse \
             --repo="repo-${{ matrix.variant.arch }}" \
-            "$expected_ref" >/dev/null
+            "$expected_ref" > "t3code-commit-${{ matrix.variant.arch }}.txt"
 
           printf '%s\n' "$expected_ref" > "t3code-ref-${{ matrix.variant.arch }}.txt"
 
+      - name: Check installed repository bundle
+        env:
+          T3_DISPOSABLE_ACCOUNT: '1'
+        shell: bash
+        run: |
+          set -euo pipefail
+          arch="${{ matrix.variant.arch }}"
+          bundle="t3code-pages-${arch}.flatpak"
+          flatpak build-bundle --arch="$arch" --runtime-repo="$RUNTIME_REPO" \
+            "repo-${arch}" "$bundle" "$APP_ID" master
+          bash tests/check-publication.sh installed "$bundle"
+          test "$(ostree rev-parse --repo="repo-${arch}" "app/${APP_ID}/${arch}/master")" \
+            = "$(<"t3code-commit-${arch}.txt")"
+
+      - name: Archive validated architecture repository
+        shell: bash
+        run: |
+          set -euo pipefail
           # Upload one archive so the repository's object layout is preserved
           # when the untrusted build result crosses the job boundary.
           tar \
@@ -104,6 +130,7 @@ jobs:
           path: |
             t3code-ostree-${{ matrix.variant.arch }}.tar.gz
             t3code-ref-${{ matrix.variant.arch }}.txt
+            t3code-commit-${{ matrix.variant.arch }}.txt
           if-no-files-found: error
           compression-level: 0
           retention-days: 1
@@ -130,6 +157,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Set stable build timestamp
         shell: bash
@@ -199,11 +227,15 @@ jobs:
           artifact_dir="inputs/t3code-ostree-${arch}"
           archive="$artifact_dir/t3code-ostree-${arch}.tar.gz"
           ref_file="$artifact_dir/t3code-ref-${arch}.txt"
+          commit_file="$artifact_dir/t3code-commit-${arch}.txt"
           expected_ref="app/${APP_ID}/${arch}/master"
 
           test -s "$archive" || { echo "Missing repository archive: $archive" >&2; exit 1; }
           test -s "$ref_file" || { echo "Missing application ref: $ref_file" >&2; exit 1; }
           test "$(<"$ref_file")" = "$expected_ref"
+          test -s "$commit_file"
+          validated_commit="$(<"$commit_file")"
+          [[ "$validated_commit" =~ ^[a-f0-9]{64}$ ]]
 
           extract_dir="$RUNNER_TEMP/t3code-${arch}"
           mkdir -p "$extract_dir"
@@ -211,7 +243,7 @@ jobs:
           source_repo="$extract_dir/repo-${arch}"
           test -f "$source_repo/config"
           ostree fsck --repo="$source_repo" --all
-          ostree rev-parse --repo="$source_repo" "$expected_ref" >/dev/null
+          test "$(ostree rev-parse --repo="$source_repo" "$expected_ref")" = "$validated_commit"
 
           # Pull only the exact app ref. Runtime and appstream refs from the
           # unsigned source repository are intentionally not published.
@@ -221,6 +253,8 @@ jobs:
             --depth=-1 \
             "$source_repo" \
             "$expected_ref"
+
+          test "$(ostree rev-parse --repo=site/repo "$expected_ref")" = "$validated_commit"
 
           flatpak build-sign \
             --gpg-sign="$FLATPAK_GPG_KEY_ID" \

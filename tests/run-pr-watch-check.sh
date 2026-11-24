@@ -19,33 +19,19 @@ spec = importlib.util.spec_from_file_location("patch", Path(sys.argv[2]).parent 
 patch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(patch)
 archive = Path(sys.argv[1])
-with archive.open("rb") as stream:
-    header, payload = patch.read_header(stream)
-    entry = dict(patch.entries(header))[patch.SERVER]
-    stream.seek(payload + int(entry["offset"]))
-    source = stream.read(entry["size"]).decode()
-    runtime_entry = dict(patch.entries(header))[patch.RUNTIME]
-    stream.seek(payload + int(runtime_entry["offset"]))
-    runtime = stream.read(runtime_entry["size"]).decode()
+resolved = patch.resolve_archive(archive)
+runtime_path = resolved["runtime"]
+runtime = resolved["sources"][runtime_path]
 if os.environ.get("T3_PR_WATCH_APPLY_COMPLETION") == "1":
     runtime = patch.patch_pr_watch_completion(runtime)
-    patch.rewrite_archive(archive, {patch.RUNTIME: runtime.encode()})
 if os.environ.get("T3_PR_WATCH_APPLY_PATCH") == "1":
     runtime = patch.patch_pr_watch_delivery(runtime)
-    patch.rewrite_archive(archive, {patch.RUNTIME: runtime.encode()})
-# Upstream now handles detail and activity errors separately. A failed comment
-# read must remain retryable without discarding the successful check read.
-assert 'if (isFailure(detailRead)) {' in source
-assert 'const detail = detailRead.value;' in source
-assert 'const activity = isSuccess$1(activityRead) ? activityRead.value : none();' in source
-assert 'remarksComplete: plan.activity ? remarks !== null : last?.remarksComplete ?? false,' in source
-for _, after in patch.PR_WATCH_COMPLETION_REPLACEMENTS:
-    if after:
-        assert after in runtime
-assert patch.PR_WATCH_GOAL_AFTER in runtime
-assert patch.PR_WATCH_GOAL_GATE_AFTER in runtime
+if runtime != resolved["sources"][runtime_path]:
+    patch.rewrite_archive(archive, {runtime_path: runtime.encode()})
+# The compiled behavioral check below verifies retryable comment failures,
+# required-check delivery, goal limits, and completion wakeups.
 PY
-python3 "$tests_dir/instrument-preview-browser.py" "$test_root/app/bin/t3code/resources/app.asar"
+python3 "$tests_dir/instrument-preview-browser.py" "$test_root/app/bin/t3code/resources/app.asar" "$test_root"
 cp "$tests_dir/check-pr-watch.mjs" "$test_root/check-pr-watch.mjs"
 flatpak run --user --app-path="$test_root/app" --sandbox --unshare=network \
     --nosocket=wayland --nosocket=x11 --nosocket=fallback-x11 \

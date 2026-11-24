@@ -33,20 +33,15 @@ spec = importlib.util.spec_from_file_location(
 patch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(patch)
 archive = Path(sys.argv[1])
-with archive.open("rb") as stream:
-    header, payload = patch.read_header(stream)
-    entry = dict(patch.entries(header))[patch.SERVER]
-    stream.seek(payload + int(entry["offset"]))
-    server = stream.read(entry["size"]).decode()
-    runtime_entry = dict(patch.entries(header))[patch.RUNTIME]
-    stream.seek(payload + int(runtime_entry["offset"]))
-    runtime = stream.read(runtime_entry["size"]).decode()
+resolved = patch.resolve_archive(archive)
+server = resolved["sources"][resolved["server"]]
+runtime = resolved["sources"][resolved["runtime"]]
 assert patch.ANDROID_MISSING_SDK_AFTER in runtime
 assert patch.ANDROID_MISSING_SDK_BEFORE not in runtime
 assert "isolatedPlaywright" in server and "stageUploads" in server
 print("Installed Devices error includes Android setup and diagnostics commands.")
 PY
-python3 "$tests_dir/instrument-preview-browser.py" "$test_root/app/bin/t3code/resources/app.asar"
+python3 "$tests_dir/instrument-preview-browser.py" "$test_root/app/bin/t3code/resources/app.asar" "$test_root"
 cp "$tests_dir/check-preview-browser.mjs" "$test_root/check.mjs"
 mkdir "$test_root/state"
 

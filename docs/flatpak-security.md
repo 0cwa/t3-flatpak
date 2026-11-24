@@ -53,16 +53,23 @@ compromise can still reach local services, and the selected browser profile's
 cookies remain accessible. The HTML renderer retains its existing proxy and
 content controls, which are not a native-process network boundary.
 
-The packaging patch checks the exact reviewed server and runtime module hashes
-and every integration call site. An upstream bundle change stops the build until the
-integration is reviewed. Run the installed payload regression through
+The packaging patch follows the active server import graph and requires each
+integration call site to match its supported contract exactly once. Generated
+chunk filenames and identifier suffixes may change without a manual version
+update. Missing, ambiguous, or incompatible sites stop the build before the
+archive is modified. The upstream AppImage remains checksum-verified, and all
+release and Pages publication paths run the source and installed behavior
+checks before publishing. The updater also validates a candidate before
+advancing `main` or creating its release tag.
+
+Run the installed payload regression through
 `agent-heavy -- bash tests/run-preview-browser-check.sh` on a Flatpak host.
 It uses a disposable parent with an empty home, instruments only a throwaway
 archive to expose test functions, and checks native marker denial, descriptors,
 namespace separation, rendering, transfers, persistent profiles, content
 restrictions and shutdown. Set `T3_TEST_BROWSER` to an existing pinned Chrome
 157.0.8103.78 executable to avoid downloading the test browser again. For development
-against an unmodified installed 0.1.11 payload, also set
+against an unmodified compatible installed payload, also set
 `T3_PREVIEW_APPLY_PATCH=1`. No installed files or user overrides are changed.
 
 Use a disposable OS account or ephemeral CI container for runtime checks:
