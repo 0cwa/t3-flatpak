@@ -44,6 +44,7 @@ flatpak remote-add --user --if-not-exists flathub \
 flatpak install --user --noninteractive "$bundle"
 
 bash "$tests_dir/run-pr-watch-check.sh"
+bash "$tests_dir/run-antigravity-runtime-check.sh"
 bash "$tests_dir/run-preview-browser-check.sh"
 
 # Run the installed application's binaries, not the build SDK's copies.

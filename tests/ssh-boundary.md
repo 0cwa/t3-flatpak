@@ -16,7 +16,7 @@ The check:
 
 - Inspects installed permissions for host directory, host-command, and default
   SSH-agent grants, and checks that app-private `.ssh` and `.local/bin` are
-  persistent, plus app-private `.pi` state.
+  persistent, plus app-private `.pi` and `.gemini` state.
 - Creates dummy canary files in the test account's `.ssh`, `.gnupg`, and
   `.local/bin` directories. They contain no credentials.
 - Starts a dedicated temporary agent with a generated test key, leaving any
@@ -32,13 +32,16 @@ The check:
   token, and session data in `~/.pi/agent`; a separate sandbox invocation
   reads them back. The host's Pi canary must remain unreadable, and the data
   must be backed under the application's private `~/.var/app` directory.
+- Invokes `check-antigravity-persistence.sh` to check both global skill
+  directories, synthetic managed-runtime files, and a synthetic instance
+  token across separate sandbox runs. The host's `.gemini` canary stays hidden.
 
 The EXIT trap stops the temporary agent and removes canaries and temporary
 installation files. The disposable account's app data may remain. No server
 connection, real private key, or hosting-account configuration is needed.
 
-This exercises installed filesystem, persisted Pi mounts, and agent boundaries.
-It does not launch the actual Pi agent or establish GUI session restoration.
+This exercises installed filesystem, persisted Pi and Antigravity mounts, and
+agent boundaries. It does not launch either provider or establish GUI session restoration.
 It does not prove
 that all sandbox interfaces are secure or that agent access is harmless:
 subprocesses can request authentication with any key available in the agent.

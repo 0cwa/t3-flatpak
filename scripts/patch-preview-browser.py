@@ -9,18 +9,18 @@ import struct
 import sys
 
 
-SERVER = "apps/server/dist/server-bi3w5spO.mjs"
-SERVER_SHA256 = "aa634dc27f7117c17e7c59944dd83b4fbfcbe8f09a06738be32cd96406a99435"
-RUNTIME = "apps/server/dist/runtimeLayer-BR0FRrjb.mjs"
-RUNTIME_SHA256 = "12a122fbadaef5afd3e2a22d85b4d4ad2fb31b8e6f30293945524d96c44edb7c"
+SERVER = "apps/server/dist/server-8K5Ixyrs.mjs"
+SERVER_SHA256 = "dd42a4f6ec75cf5cf32a1da225837656086fb4df3e03da7bd87fbd196412c8bf"
+RUNTIME = "apps/server/dist/runtimeLayer-CyWe8jGq.mjs"
+RUNTIME_SHA256 = "f341b92a0e63e6e11ae8a74699313bee310babd19d2e2a0901648040246218cb"
 HELPER = "/app/lib/t3-preview/launch.mjs"
 REPLACEMENTS = (
     ('const loadPlaywright = () => requirePlaywright("playwright-core");',
      'const loadPlaywright = () => isolatedPlaywright(requirePlaywright("playwright-core"));'),
     ('\t\t\texecutable,\n\t\t\tenv,\n\t\t\targs: [\n\t\t\t\t"--disable-gpu",',
      f'\t\t\texecutable: "{HELPER}",\n\t\t\tenv,\n\t\t\targs: [\n\t\t\t\t`--t3-browser-executable=${{executable}}`,\n\t\t\t\t"--disable-gpu",'),
-    ('spawner.spawn(make$85(input.executable, [\n\t\t"--headless=new",',
-     f'spawner.spawn(make$85("{HELPER}", [\n\t\t`--t3-browser-executable=${{input.executable}}`,\n\t\t"--headless=new",'),
+    ('spawner.spawn(make$111(input.executable, [\n\t\t"--headless=new",',
+     f'spawner.spawn(make$111("{HELPER}", [\n\t\t`--t3-browser-executable=${{input.executable}}`,\n\t\t"--headless=new",'),
     ('locator.setInputFiles([...input.paths],', 'locator.setInputFiles(await stageUploads(page, input.paths),'),
     ('open.chooser.setFiles([...input.paths],', 'open.chooser.setFiles(await stageUploads(tab.page, input.paths),'),
     ('open.chooser.setFiles(open.chooser.isMultiple() ? [...input.files] : input.files.slice(0, 1))',
@@ -48,6 +48,9 @@ ANDROID_SHUTDOWN_AFTER = 'hubJson(request, HubActionResult, "shutdown", device.p
 
 
 def patch_android_device_operations(source):
+    if source.count(ANDROID_MISSING_SDK_BEFORE) != 1:
+        raise ValueError("Android setup patch expected exactly one missing-SDK reason")
+    source = source.replace(ANDROID_MISSING_SDK_BEFORE, ANDROID_MISSING_SDK_AFTER)
     for before, after in (
         (ANDROID_HUB_SPAWN_BEFORE, ANDROID_HUB_SPAWN_AFTER),
         (ANDROID_SHUTDOWN_BEFORE, ANDROID_SHUTDOWN_AFTER),
@@ -57,36 +60,32 @@ def patch_android_device_operations(source):
         source = source.replace(before, after)
     return source
 
-# Check-state delivery must not depend on a simultaneous comment API read.
-# Missing activity keeps remarksComplete false, so the next sweep retries it
-# without moving the persisted comment cursor or repeating check notifications.
-PR_WATCH_READ_BEFORE = (
-    'const read = isFailure$1(detailRead) ? failCause$1(detailRead.cause) : '
-    'isFailure$1(activityRead) ? failCause$1(activityRead.cause) : '
-    'succeed$2([detailRead.value, activityRead.value]);'
-)
-PR_WATCH_READ_AFTER = (
-    'const read = isFailure$1(detailRead) ? failCause$1(detailRead.cause) : '
-    'succeed$2([detailRead.value, isFailure$1(activityRead) ? none() : activityRead.value]);'
-)
-PR_WATCH_ACTIVITY_BEFORE = '\t\treadFailures.delete(group.key);\n\t\tconst [detail, activity] = read.value;'
-PR_WATCH_ACTIVITY_AFTER = (
-    '\t\treadFailures.delete(group.key);\n'
-    '\t\tif (isFailure$1(activityRead)) yield* logFailure("pull request watch comment read failed", '
-    '{ pullRequest: group.key })(activityRead.cause);\n'
-    '\t\tconst [detail, activity] = read.value;'
-)
+# T3 0.1.11 already keeps check delivery independent of comment API failures.
+# The installed runtime test retains those regression cases without a patch.
+
+# ACP clients must identify themselves as T3 Code for every runtime version.
+# Google, not a substituted editor identity, determines the available models.
+ANTIGRAVITY_CLIENT_BEFORE = '''/** Older releases offer non-Gemini models only to allowlisted clients such as Zed. */
+function antigravityClientInfo(version$1) {
+\tconst parsed = parseAntigravityVersion(version$1);
+\treturn parsed !== void 0 && compareVersions(parsed, OPEN_MODEL_ACCESS_RELEASE) >= 0 ? {
+\t\tname: "t3-code",
+\t\ttitle: "T3 Code",
+\t\tversion
+\t} : {
+\t\tname: "zed",
+\t\tversion: "0.0.0"
+\t};
+}'''
+ANTIGRAVITY_CLIENT_AFTER = '''function antigravityClientInfo() {
+\treturn { name: "t3-code", title: "T3 Code", version };
+}'''
 
 
-def patch_pr_watch(source):
-    for before, after in (
-        (PR_WATCH_READ_BEFORE, PR_WATCH_READ_AFTER),
-        (PR_WATCH_ACTIVITY_BEFORE, PR_WATCH_ACTIVITY_AFTER),
-    ):
-        if source.count(before) != 1:
-            raise ValueError("PR watch patch expected exactly one reviewed read site")
-        source = source.replace(before, after)
-    return source
+def patch_antigravity_client(source):
+    if source.count(ANTIGRAVITY_CLIENT_BEFORE) != 1:
+        raise ValueError("Antigravity patch expected exactly one reviewed client identity")
+    return source.replace(ANTIGRAVITY_CLIENT_BEFORE, ANTIGRAVITY_CLIENT_AFTER)
 
 
 PR_WATCH_COMPLETION_REPLACEMENTS = (
@@ -172,9 +171,6 @@ def patch_server(source):
         if source.count(before) != 1:
             raise ValueError(f"Preview patch expected exactly one launch/transfer site: {before!r}")
         source = source.replace(before, after)
-    if source.count(ANDROID_MISSING_SDK_BEFORE) != 1:
-        raise ValueError("Android setup patch expected exactly one missing-SDK reason")
-    source = source.replace(ANDROID_MISSING_SDK_BEFORE, ANDROID_MISSING_SDK_AFTER)
     imports = 'import { isolatedPlaywright, stageUploads, saveDownload } from "/app/lib/t3-preview/adapter.mjs";\n'
     if source.startswith("#!"):
         first, rest = source.split("\n", 1)
@@ -263,8 +259,8 @@ def patch_archive(filename):
     if hashlib.sha256(runtime_data).hexdigest() != RUNTIME_SHA256:
         raise ValueError("Unreviewed T3 bundle: PR watch runtime hash changed; review delivery before updating")
     rewrite_archive(filename, {
-        SERVER: patch_android_device_operations(patch_pr_watch_completion(patch_pr_watch(patch_server(data.decode())))).encode(),
-        RUNTIME: patch_pr_watch_delivery(runtime_data.decode()).encode(),
+        SERVER: patch_antigravity_client(patch_server(data.decode())).encode(),
+        RUNTIME: patch_android_device_operations(patch_pr_watch_delivery(patch_pr_watch_completion(runtime_data.decode()))).encode(),
     })
 
 

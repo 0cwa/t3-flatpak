@@ -28,15 +28,20 @@ with archive.open("rb") as stream:
     stream.seek(payload + int(runtime_entry["offset"]))
     runtime = stream.read(runtime_entry["size"]).decode()
 if os.environ.get("T3_PR_WATCH_APPLY_COMPLETION") == "1":
-    source = patch.patch_pr_watch_completion(source)
-    patch.rewrite_archive(archive, {patch.SERVER: source.encode()})
+    runtime = patch.patch_pr_watch_completion(runtime)
+    patch.rewrite_archive(archive, {patch.RUNTIME: runtime.encode()})
 if os.environ.get("T3_PR_WATCH_APPLY_PATCH") == "1":
-    source = patch.patch_pr_watch(source)
     runtime = patch.patch_pr_watch_delivery(runtime)
-    patch.rewrite_archive(archive, {patch.SERVER: source.encode(), patch.RUNTIME: runtime.encode()})
-assert patch.PR_WATCH_READ_AFTER in source
-assert patch.PR_WATCH_ACTIVITY_AFTER in source
-assert patch.PR_WATCH_READ_BEFORE not in source
+    patch.rewrite_archive(archive, {patch.RUNTIME: runtime.encode()})
+# Upstream now handles detail and activity errors separately. A failed comment
+# read must remain retryable without discarding the successful check read.
+assert 'if (isFailure(detailRead)) {' in source
+assert 'const detail = detailRead.value;' in source
+assert 'const activity = isSuccess$1(activityRead) ? activityRead.value : none();' in source
+assert 'remarksComplete: plan.activity ? remarks !== null : last?.remarksComplete ?? false,' in source
+for _, after in patch.PR_WATCH_COMPLETION_REPLACEMENTS:
+    if after:
+        assert after in runtime
 assert patch.PR_WATCH_GOAL_AFTER in runtime
 assert patch.PR_WATCH_GOAL_GATE_AFTER in runtime
 PY

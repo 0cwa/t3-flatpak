@@ -1,5 +1,6 @@
-"""Exercise updater publication and retry behavior without network access."""
+"""Exercise AppImage repinning, release verification, and publication offline."""
 
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -55,6 +56,164 @@ elif args[:2] == ["workflow", "run"]:
 else:
     raise AssertionError(args)
 '''
+
+FETCH_STUB = r'''
+const fs = require("node:fs");
+const fixture = JSON.parse(fs.readFileSync(process.env.T3_TEST_RELEASE_FIXTURE, "utf8"));
+global.fetch = async (url) => {
+  if (url === "https://api.github.com/repos/pingdotgg/t3code/releases/latest") {
+    return new Response(JSON.stringify(fixture.release));
+  }
+  if (url === fixture.downloadUrl) return new Response(fixture.payload);
+  throw new Error(`Unexpected network request: ${url}`);
+};
+'''
+
+
+class AppImageSourceTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.manifest = self.root / "com.t3tools.t3code.yml"
+        self.output = self.root / "output"
+        self.payload = "synthetic AppImage bytes for checksum verification\n"
+        self.digest = hashlib.sha256(self.payload.encode()).hexdigest()
+        self.tag = "v0.1.11"
+        self.env = {
+            **os.environ,
+            "GITHUB_TOKEN": "",
+            "GITHUB_OUTPUT": str(self.output),
+            "GITHUB_REPOSITORY": "example/project",
+            "GITHUB_WORKFLOW": "Release test",
+            "GITHUB_SERVER_URL": "https://github.com",
+            "GITHUB_RUN_ID": "1",
+            "GITHUB_REF": "refs/tags/t3code-v0.1.11",
+            "GITHUB_SHA": "a" * 40,
+        }
+
+    def source(self, name, tag="v0.1.9", digest="a" * 64):
+        return (
+            "      - type: file\n"
+            f"        url: https://github.com/pingdotgg/t3code/releases/download/{tag}/{name}\n"
+            "        dest-filename: T3-Code.AppImage\n"
+            f"        sha256: {digest}\n"
+            "        only-arches: [x86_64]\n"
+        )
+
+    def asset(self, name, **overrides):
+        return {
+            "name": name,
+            "browser_download_url": f"https://github.com/pingdotgg/t3code/releases/download/{self.tag}/{name}",
+            "digest": f"sha256:{self.digest}",
+            **overrides,
+        }
+
+    def run_updater(self, assets, succeeds=True, tag=None):
+        fixture = self.root / "release.json"
+        fixture.write_text(json.dumps({
+            "release": {"tag_name": tag or self.tag, "assets": assets},
+            "downloadUrl": self.asset(assets[0]["name"])["browser_download_url"] if assets else "",
+            "payload": self.payload,
+        }))
+        preload = self.root / "fetch.cjs"
+        preload.write_text(FETCH_STUB)
+        result = subprocess.run(
+            ["node", "--require", str(preload), str(ROOT / "scripts/update-t3code-appimage.js")],
+            cwd=self.root,
+            env={**self.env, "T3_TEST_RELEASE_FIXTURE": str(fixture)},
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode == 0, succeeds, result.stdout + result.stderr)
+        return result
+
+    def test_updater_repins_both_asset_name_formats_without_other_source_changes(self):
+        for old_name in ("T3-Code-0.1.9-x86_64.AppImage", "T3-Code-x86_64.AppImage"):
+            for new_name in ("T3-Code-0.1.11-x86_64.AppImage", "T3-Code-x86_64.AppImage"):
+                with self.subTest(old_name=old_name, new_name=new_name):
+                    other_source = "      - type: file\n        path: startt3code\n"
+                    self.manifest.write_text(other_source + self.source(old_name))
+                    self.run_updater([self.asset(new_name)])
+                    self.assertEqual(self.manifest.read_text(),
+                                     other_source + self.source(new_name, self.tag, self.digest))
+        self.assertEqual(self.output.read_text().splitlines(), [f"version={self.tag}"] * 4)
+
+    def test_updater_rejects_ambiguous_missing_and_wrong_arch_assets(self):
+        candidates = (
+            [],
+            [self.asset("T3-Code-arm64.AppImage")],
+            [self.asset("T3-Code-0.1.11-aarch64.AppImage")],
+            [self.asset("T3-Code-unrelated-x86_64.AppImage")],
+            [self.asset("T3-Code-0.1.10-x86_64.AppImage")],
+            [self.asset("T3-Code-x86_64.AppImage"), self.asset("T3-Code-0.1.11-x86_64.AppImage")],
+        )
+        for assets in candidates:
+            with self.subTest(assets=assets):
+                source = self.source("T3-Code-x86_64.AppImage")
+                self.manifest.write_text(source)
+                self.run_updater(assets, succeeds=False)
+                self.assertEqual(self.manifest.read_text(), source)
+
+    def test_updater_rejects_moving_and_foreign_download_urls(self):
+        name = "T3-Code-x86_64.AppImage"
+        for url in (
+            f"https://github.com/pingdotgg/t3code/releases/latest/download/{name}",
+            f"https://github.com/pingdotgg/t3code/releases/download/latest/{name}",
+            f"https://example.invalid/releases/download/{self.tag}/{name}",
+        ):
+            with self.subTest(url=url):
+                source = self.source(name)
+                self.manifest.write_text(source)
+                self.run_updater([self.asset(name, browser_download_url=url)], succeeds=False)
+                self.assertEqual(self.manifest.read_text(), source)
+        self.run_updater([self.asset(name)], succeeds=False, tag="latest")
+
+    def test_updater_rejects_checksum_mismatch_before_repinning(self):
+        source = self.source("T3-Code-x86_64.AppImage")
+        self.manifest.write_text(source)
+        self.run_updater([self.asset("T3-Code-x86_64.AppImage", digest="sha256:" + "0" * 64)],
+                         succeeds=False)
+        self.assertEqual(self.manifest.read_text(), source)
+
+    def run_release_verifier(self, source, succeeds=True):
+        runtime_sources = "".join(
+            f"      - type: archive\n        url: {url}\n        sha256: {'b' * 64}\n"
+            for url in (
+                "https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.xz",
+                "https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.56.0.tar.xz",
+                "https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.5p1.tar.gz",
+            )
+        )
+        self.manifest.write_text(runtime_sources + source)
+        (self.root / "t3code-x86_64.flatpak").write_bytes(b"synthetic Flatpak bundle\n")
+        workflow = yaml.safe_load((ROOT / ".github/workflows/release.yml").read_text())
+        script = next(step["run"] for step in workflow["jobs"]["build"]["steps"]
+                      if step.get("name") == "Verify release inputs and bundle")
+        result = subprocess.run(
+            ["bash", "-e", "-o", "pipefail", "-c", script],
+            cwd=self.root, env=self.env, capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode == 0, succeeds, result.stdout + result.stderr)
+        return result
+
+    def test_release_verifier_accepts_both_immutable_name_formats(self):
+        for name in ("T3-Code-0.1.11-x86_64.AppImage", "T3-Code-x86_64.AppImage"):
+            with self.subTest(name=name):
+                result = self.run_release_verifier(self.source(name, self.tag, self.digest))
+                self.assertIn(f"releases/download/{self.tag}/{name}", result.stdout)
+                self.assertIn(f"sha256: {self.digest}", result.stdout)
+
+    def test_release_verifier_rejects_moving_duplicate_missing_hash_and_wrong_arch(self):
+        source = self.source("T3-Code-x86_64.AppImage", self.tag, self.digest)
+        for invalid in (
+            source.replace(f"download/{self.tag}", "latest/download"),
+            source.replace(f"download/{self.tag}", "download/latest"),
+            source + source,
+            source.replace(f"        sha256: {self.digest}\n", ""),
+            source.replace("T3-Code-x86_64.AppImage", "T3-Code-aarch64.AppImage"),
+        ):
+            with self.subTest(source=invalid):
+                self.run_release_verifier(invalid, succeeds=False)
 
 
 class AppImageUpdateWorkflowTests(unittest.TestCase):

@@ -3,9 +3,9 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import http from "node:http";
 import { spawn } from "node:child_process";
-import { ServerBrowserContexts, captureHtmlScreenshot, measureHtmlHeights, setInputFiles } from "/app/bin/t3code/resources/app.asar/apps/server/dist/server-bi3w5spO.mjs";
-import { previewTestNodeServices } from "/app/bin/t3code/resources/app.asar/apps/server/dist/ManagedEndpointRuntime-B-62Mn5X.mjs";
-import { es as runPromise, Uo as provide } from "/app/bin/t3code/resources/app.asar/apps/server/dist/Schema-znhrSbG8.mjs";
+import { ServerBrowserContexts, captureHtmlScreenshot, measureHtmlHeights, setInputFiles } from "/app/bin/t3code/resources/app.asar/apps/server/dist/server-8K5Ixyrs.mjs";
+import { previewTestNodeServices } from "/app/bin/t3code/resources/app.asar/apps/server/dist/ManagedEndpointRuntime-DBgt8khC.mjs";
+import { ls as runPromise, Xo as provide } from "/app/bin/t3code/resources/app.asar/apps/server/dist/Schema-BBjlTC3i.mjs";
 import { saveDownload, stageUploads } from "/app/lib/t3-preview/adapter.mjs";
 
 const [root, executable] = process.argv.slice(2);
@@ -14,7 +14,7 @@ const results = {};
 const watchdog = setTimeout(() => { console.error("Preview regression timed out"); process.exit(1); }, 90_000);
 const home = process.env.HOME;
 let contexts;
-const markerPaths = [".t3/userdata/secrets", ".pi/agent", ".codex", ".claude", ".ssh", ".var/app/com.t3tools.t3code/data", ".var/app/com.t3tools.t3code/config", ".var/app/com.t3tools.t3code/cache"]
+const markerPaths = [".t3/userdata/secrets", ".pi/agent", ".gemini", ".codex", ".claude", ".ssh", ".var/app/com.t3tools.t3code/data", ".var/app/com.t3tools.t3code/config", ".var/app/com.t3tools.t3code/cache"]
   .map((directory) => path.join(home, directory, "disposable-preview-marker.js"));
 markerPaths.push(path.join(root, "project-marker.js"));
 let blockedRequests = 0;
@@ -32,6 +32,7 @@ server.on("upgrade", (request, socket) => { blockedRequests++; socket.destroy();
 function manager() {
   return new ServerBrowserContexts({
     profilesDir: path.join(root, "profiles"), executable: async () => executable,
+    chrome: { version: "157.0.8103.78", platform: "linux" },
     env: { ...process.env, T3CODE_SERVER_BROWSER_SANDBOX: "0", T3_PRIVATE_TEST_ENV: "disposable" },
   });
 }

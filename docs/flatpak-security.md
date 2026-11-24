@@ -8,12 +8,16 @@ not a security isolation boundary; its binaries and libraries inherit the
 application's effective filesystem, bus, network, and user override grants.
 
 Keep app state persistent using Flatpak's XDG app directories, and preserve
-`--persist=.t3`, `--persist=.pi`, `--persist=.codex`, `--persist=.claude`,
+`--persist=.t3`, `--persist=.pi`, `--persist=.gemini`, `--persist=.codex`, `--persist=.claude`,
 `--persist=.ssh`, and `--persist=.local/bin` if the launcher and application require those paths.
 Allow individual projects by explicit per-directory overrides, not `home`
 or `host` defaults. Pi's `auth.json` can contain provider tokens; never
 replace `--persist=.pi` with a host `--filesystem=~/.pi` mount, including a
-read-only mount. User overrides can still weaken the packaged boundary.
+read-only mount. The same applies to Antigravity's `~/.gemini`: persist its
+app-private skills and rules, and keep the host's Google credentials hidden.
+Managed Antigravity runtimes and instance profiles stay under `~/.t3`; its
+provider setup does not require a host keyring or command bridge.
+User overrides can still weaken the packaged boundary.
 
 For SSH remotes, prefer the documented
 [opt-in SSH-agent access](../README.md#optional-ssh-agent-access). It lets all
@@ -49,16 +53,16 @@ compromise can still reach local services, and the selected browser profile's
 cookies remain accessible. The HTML renderer retains its existing proxy and
 content controls, which are not a native-process network boundary.
 
-The packaging patch checks the exact reviewed server module hash and every
-launch/transfer call site. An upstream bundle change stops the build until the
+The packaging patch checks the exact reviewed server and runtime module hashes
+and every integration call site. An upstream bundle change stops the build until the
 integration is reviewed. Run the installed payload regression through
 `agent-heavy -- bash tests/run-preview-browser-check.sh` on a Flatpak host.
 It uses a disposable parent with an empty home, instruments only a throwaway
 archive to expose test functions, and checks native marker denial, descriptors,
 namespace separation, rendering, transfers, persistent profiles, content
 restrictions and shutdown. Set `T3_TEST_BROWSER` to an existing pinned Chrome
-157 executable to avoid downloading the test browser again. For development
-against an unmodified installed 0.1.9 payload, also set
+157.0.8103.78 executable to avoid downloading the test browser again. For development
+against an unmodified installed 0.1.11 payload, also set
 `T3_PREVIEW_APPLY_PATCH=1`. No installed files or user overrides are changed.
 
 Use a disposable OS account or ephemeral CI container for runtime checks:

@@ -75,6 +75,19 @@ class FlatpakSecurityTests(unittest.TestCase):
             with self.subTest(path=path):
                 self.check_source(f'finish-args: ["--filesystem={path}"]\n', False)
 
+    def test_host_antigravity_state_cannot_be_mounted(self):
+        for path in (
+            "~/.gemini", "~/.gemini:ro", "~/.gemini/antigravity-cli/settings.json:ro",
+            "~/./.gemini/config/skills:ro", "~/.gemini/../.gemini:ro",
+            "home/.gemini:ro", "home/.gemini/antigravity-acp/acp_token.json:ro",
+            "/home/alice/.gemini:ro", "/var/home/alice/.gemini:ro",
+            "//home/alice/.gemini:ro", "/root/.gemini:ro", "/var/roothome/.gemini:ro",
+            "~:ro", "home:ro", "/home/alice:ro", "/var/home/alice:ro",
+        ):
+            with self.subTest(path=path):
+                self.check_source(f'finish-args: ["--filesystem={path}"]\n', False)
+        self.check_source('finish-args: ["--filesystem=~/.gemini-public-project:ro"]\n', True)
+
     def test_invalid_or_ambiguous_manifests_fail_closed(self):
         for source in (
             "{}\n", "finish-args: false\n", "finish-args: [null]\n",
@@ -86,20 +99,43 @@ class FlatpakSecurityTests(unittest.TestCase):
             with self.subTest(source=source):
                 self.check_source(source, False)
 
-    def test_installed_permissions_reject_credential_files_and_parents(self):
+    def check_installed_permissions(self, grant, allowed, persistent=".ssh;.pi;.gemini;.local/bin;"):
         boundary = CHECKER.parents[1] / "tests/check-ssh-boundary.sh"
         code = boundary.read_text().split(
             'python3 - "$test_root/permissions" <<\'PY\'\n', 1
         )[1].split("\nPY\n", 1)[0]
+        with tempfile.TemporaryDirectory() as directory:
+            metadata = Path(directory) / "permissions"
+            metadata.write_text(
+                "[Context]\ndevices=dri;kvm;\n"
+                f"persistent={persistent}\nfilesystems={grant};\n"
+            )
+            result = subprocess.run(
+                [sys.executable, "-c", code, str(metadata)],
+                capture_output=True, text=True, check=False,
+            )
+            self.assertEqual(result.returncode, 0 if allowed else 1, result.stdout + result.stderr)
+
+    def test_installed_permissions_reject_credential_files_and_parents(self):
         for grant, allowed in (
             ("xdg-documents/projects:rw", True),
             ("~/.pi-public-project:ro", True),
+            ("~/.gemini-public-project:ro", True),
             ("~/.pi/agent/auth.json:ro", False),
             ("~/./.pi/agent/auth.json:ro", False),
             ("home/.pi/agent/auth.json:ro", False),
             ("/home/alice/.pi/agent/auth.json:ro", False),
             ("//var/home/alice/.pi/agent/auth.json:ro", False),
             ("/root/.pi/agent/auth.json:ro", False),
+            ("~/.gemini", False),
+            ("~/.gemini/antigravity-acp/acp_token.json:ro", False),
+            ("~/./.gemini/config/skills:ro", False),
+            ("home/.gemini/antigravity-cli/settings.json:ro", False),
+            ("/home/alice/.gemini:ro", False),
+            ("//var/home/alice/.gemini:ro", False),
+            ("/root/.gemini:ro", False),
+            ("/var/roothome/.gemini:ro", False),
+            ("/home/alice:ro", False),
             ("~/.ssh/key:ro", False),
             ("~/.codex/auth.json:ro", False),
             ("~/.local:ro", False),
@@ -108,21 +144,14 @@ class FlatpakSecurityTests(unittest.TestCase):
             ("host:ro", False),
             ("~/../alice/.pi:ro", False),
         ):
-            with self.subTest(grant=grant), tempfile.TemporaryDirectory() as directory:
-                metadata = Path(directory) / "permissions"
-                metadata.write_text(
-                    "[Context]\ndevices=dri;kvm;\n"
-                    "persistent=.ssh;.pi;.local/bin;\n"
-                    f"filesystems={grant};\n"
-                )
-                result = subprocess.run(
-                    [sys.executable, "-c", code, str(metadata)],
-                    capture_output=True, text=True, check=False,
-                )
-                self.assertEqual(
-                    result.returncode, 0 if allowed else 1,
-                    result.stdout + result.stderr,
-                )
+            with self.subTest(grant=grant):
+                self.check_installed_permissions(grant, allowed)
+
+    def test_installed_antigravity_state_requires_persistence(self):
+        for persistent in (".ssh;.pi;.local/bin;", ".ssh;.pi;.gemini/config;.local/bin;"):
+            with self.subTest(persistent=persistent):
+                self.check_installed_permissions("", False, persistent)
+        self.check_installed_permissions("", True)
 
     def test_safe_yaml_and_app_private_persistence_remain_allowed(self):
         self.check_source(
@@ -131,6 +160,7 @@ class FlatpakSecurityTests(unittest.TestCase):
             '  - *network\n'
             '  - --persist=.ssh\n'
             '  - --persist=.pi\n'
+            '  - --persist=.gemini\n'
             '  - --persist=.codex\n'
             '  - --persist=.claude\n'
             '  - --persist=.t3\n'

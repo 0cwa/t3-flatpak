@@ -201,6 +201,66 @@ sandbox. That code can access T3 Code app data and any project paths explicitly
 mounted into the Flatpak later. It does not gain broad host filesystem access
 unless you grant it.
 
+## Google Antigravity
+
+Use T3 Code's built-in Antigravity provider. Its managed installation runs
+Google's official agent through the
+[Agent Client Protocol (ACP)](https://antigravity.google/docs/cli/acp), inside
+the Flatpak sandbox. The Antigravity IDE and a host installation are not
+required.
+
+Use the T3 Code 0.1.11 package or newer. The previous 0.1.9 package downloaded
+Antigravity 1.4.5, which upstream now marks as unsupported. This package uses
+the current CLI installer and sign-in flow from
+[T3 Code 0.1.11](https://github.com/pingdotgg/t3code/releases/tag/v0.1.11).
+Updating the Flatpak does not install an agent automatically; use the provider's
+**Install** or **Update** action to replace an older managed runtime.
+
+Open **Settings > Providers**, select the local environment, and enable
+**Antigravity**. Leave **Binary path** blank and use **Install** there, then
+choose **Sign in**. Finish the Google sign-in in your browser and wait for
+T3 Code to confirm account access and load the available models. If Google
+shows a code, paste it or the page's full address into T3 Code's sign-in dialog.
+The separate
+`t3code-install-provider` helper installs npm-based providers; Antigravity's
+download, validation, and updates belong to its provider settings.
+
+For a Gemini API key, select that sign-in method in the Antigravity provider
+settings, enter the key, and choose **Connect**. T3 Code keeps the key outside
+its settings file. An ambient `GEMINI_API_KEY` does not override the method
+selected for that provider instance.
+
+The managed provider uses its own profile in app data for sign-in; it does not
+need access to the host's Antigravity credentials or Secret Service. The agent
+runs with the same mounted projects as T3 Code. The model list comes from
+Google for your account and this client; T3 Code identifies itself as T3 Code.
+
+The managed runtime and each instance's sign-in are already stored under the
+persisted `~/.t3` directory. Global Antigravity skills and rules use the
+separately persisted, app-private `~/.gemini` directory. Inside a T3 Code
+terminal, put shared skills in `~/.gemini/config/skills` or
+`~/.gemini/antigravity-cli/skills`. Project skills belong in the mounted
+project's `.agents/skills` or `.gemini/skills`. A host Antigravity installation's
+settings and credentials are separate.
+
+For an older Flatpak without `.gemini` persistence, add the mapping before
+creating shared skills, then restart T3 Code:
+
+```bash
+flatpak override --user --persist=.gemini com.t3tools.t3code
+```
+
+This maps the directory to T3 Code's app data; it does not expose the host's
+`~/.gemini`. If `--filesystem=home` has been granted separately, Flatpak ignores
+these persistence mappings and uses the host home instead.
+
+If setup fails, first update the Flatpak, clear any custom **Binary path**,
+and install or update the managed runtime in provider settings. Use **Refresh
+provider status** after signing in. Installing a separate `agy` on the host
+does not update the sandbox's managed runtime. Missing models, account access,
+or quota errors must be resolved through the Google account or provider
+message; changing Flatpak filesystem permissions does not grant model access.
+
 ## Persistent data
 
 Without home directory access, `$HOME` inside the sandbox is a temporary
@@ -211,10 +271,11 @@ that app directory:
 
 | Inside the sandbox | Stored on the host | Contents | Mechanism |
 |---|---|---|---|
-| `~/.t3` | `~/.var/app/com.t3tools.t3code/.t3` | T3 Code settings, keybindings, threads (`state.sqlite`), login tokens, secrets, worktrees | `--persist=.t3` |
+| `~/.t3` | `~/.var/app/com.t3tools.t3code/.t3` | T3 Code settings, keybindings, threads (`userdata/statev2.sqlite`), login tokens, secrets, worktrees | `--persist=.t3` |
 | `~/.pi` | `~/.var/app/com.t3tools.t3code/.pi` | Pi settings, sessions, and provider credentials (including `agent/auth.json`) | `--persist=.pi` |
 | `~/.codex` | `~/.var/app/com.t3tools.t3code/.codex` | Codex CLI config and auth | `--persist=.codex` |
 | `~/.claude` | `~/.var/app/com.t3tools.t3code/.claude` | Claude Code config, including `.claude.json` | `--persist=.claude` + `CLAUDE_CONFIG_DIR` |
+| `~/.gemini` | `~/.var/app/com.t3tools.t3code/.gemini` | Antigravity global skills and rules; managed provider sign-ins stay under `~/.t3` | `--persist=.gemini` |
 | `~/.local/bin` | `~/.var/app/com.t3tools.t3code/.local/bin` | launchers from native installers such as Claude Code's; not the host `~/.local/bin` | `--persist=.local/bin` |
 | `~/.ssh` | `~/.var/app/com.t3tools.t3code/.ssh` | sandbox-local SSH configuration and verified `known_hosts`; not the host SSH directory | `--persist=.ssh` |
 | `$XDG_CONFIG_HOME/git/config` | `~/.var/app/com.t3tools.t3code/config/git/config` | `git config --global` settings | launcher creates the file so git prefers it over `~/.gitconfig` |
@@ -222,7 +283,7 @@ that app directory:
 | `$XDG_CONFIG_HOME`, `$XDG_DATA_HOME`, `$XDG_CACHE_HOME` | `~/.var/app/com.t3tools.t3code/{config,data,cache}` | Electron profile, OpenCode, npm globals and cache | Flatpak default |
 
 The app-specific state is separate from the host's `~/.t3`, `~/.pi`,
-`~/.codex`, `~/.claude`, `~/.ssh`, and `~/.gitconfig`. Host credential and tool
+`~/.codex`, `~/.claude`, `~/.gemini`, `~/.ssh`, and `~/.gitconfig`. Host credential and tool
 directories are not exposed. If you grant `--filesystem=home`, Flatpak ignores
 `--persist` and uses the host home directly. From a terminal opened on a
 project, `cd .pi` looks for a `.pi` directory inside that project; use
@@ -491,6 +552,13 @@ AppImage so application
 updates come from the Flatpak remote, not from T3 Code writing into `/app` at
 runtime. Keep `x-checker-data` pointed at `latest-linux.yml`; it is packaging
 metadata, not a runtime update channel.
+
+The updater accepts the current `T3-Code-x86_64.AppImage` asset name and the
+older versioned filename. Both stay pinned to a release-tag URL and verified
+SHA-256. An AppImage update still requires reviewing the exact bundle hashes
+and patch sites in `scripts/patch-preview-browser.py`; a changed bundle fails
+the build until the preview, Android, Antigravity, and PR-watch integrations
+are checked and the installed regressions pass.
 
 The scheduled `Update Bundled Runtime Pins` workflow keeps the sandbox-local
 Node.js, Git, and OpenSSH source pins current independently from T3 Code
