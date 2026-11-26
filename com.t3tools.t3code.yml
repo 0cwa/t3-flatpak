@@ -27,6 +27,8 @@ finish-args:
   - --device=kvm
   - --socket=wayland
   - --socket=fallback-x11
+  # Electron uses PulseAudio for microphone input.
+  - --socket=pulseaudio
   - --share=ipc
   - --share=network
   - --env=GTK_USE_PORTAL=1
