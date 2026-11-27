@@ -77,6 +77,25 @@ the launcher leaves it off `PATH`.
 
 When installed normally, those resolve under `~/.var/app/com.t3tools.t3code/data/npm-global` and `~/.var/app/com.t3tools.t3code/cache/npm`.
 
+## Optional host command shim
+
+If you have already authorized host command execution for this Flatpak, you
+can explicitly install the `host-exec` shim into T3 Code's app data:
+
+```bash
+flatpak run --command=t3code-install-host-exec com.t3tools.t3code
+```
+
+The installer adds no Flatpak permissions. With the default permissions the
+host portal denies the shim's requests. An authorized shim runs commands with
+your host user's access, so use it only for commands you trust.
+
+Run `host-exec pwd` in a T3 Code shell to check the working directory on the
+host. The shim maps app-private persisted directories, including T3 worktrees,
+when the sandbox reports the home path as either `/home/…` or `/var/home/…`.
+To replace an existing shim, save any local customizations and rerun the
+installer with `--replace` after the app ID.
+
 ## Optional Android emulator
 
 Android support is opt-in. The default install downloads no Android SDK or Java.

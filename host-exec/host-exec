@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if (( $# == 0 )); then
+    echo 'usage: host-exec COMMAND [ARGUMENT ...]' >&2
+    exit 2
+fi
+
+workdir=$PWD
+physical_home=$(cd -P -- "$HOME" && pwd -P)
+app_home="$HOME/.var/app/com.t3tools.t3code"
+
+# A worktree may be reported under either the logical or physical home path.
+case "$workdir/" in
+    "$HOME/"*) relative=${workdir#"$HOME/"} ;;
+    "$physical_home/"*) relative=${workdir#"$physical_home/"} ;;
+    *) relative='' ;;
+esac
+
+for persisted in .t3 .codex .claude .ssh .agents .agent-private .local/bin; do
+    case "$relative/" in
+        "$persisted/"*)
+            # A filesystem override can expose a different directory here.
+            if [[ "$HOME/$persisted" -ef "$app_home/$persisted" ]]; then
+                workdir="$app_home/$relative"
+            fi
+            break
+            ;;
+    esac
+done
+
+exec /usr/bin/flatpak-spawn --host --watch-bus --directory="$workdir" \
+    /bin/bash -lc '
+        export PATH="/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:$HOME/.local/bin:$HOME/.microsandbox/bin:$PATH"
+        exec "$@"
+    ' t3-host-exec "$@"
