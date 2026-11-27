@@ -192,7 +192,7 @@ class AppImageSourceTests(unittest.TestCase):
             f"      - type: archive\n        url: {url}\n        sha256: {'b' * 64}\n"
             for url in (
                 "https://nodejs.org/dist/v24.21.0/node-v24.21.0-linux-x64.tar.xz",
-                "https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.56.0.tar.xz",
+                "https://cdn.kernel.org/pub/software/scm/git/git-2.56.0.tar.xz",
                 "https://cdn.openbsd.org/pub/OpenBSD/OpenSSH/portable/openssh-10.5p1.tar.gz",
             )
         )
