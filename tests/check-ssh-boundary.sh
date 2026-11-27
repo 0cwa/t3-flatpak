@@ -17,8 +17,10 @@ test_root=$(mktemp -d)
 canaries=()
 created_dirs=()
 agent_pid=""
+installed_shim=""
 cleanup() {
     if [[ -n "$agent_pid" ]]; then kill "$agent_pid" 2>/dev/null || true; fi
+    if [[ -n "$installed_shim" ]]; then rm -f -- "$installed_shim"; fi
     for path in "${canaries[@]}"; do rm -f -- "$path"; done
     for path in "${created_dirs[@]}"; do rmdir -- "$path" 2>/dev/null || true; done
     rm -rf -- "$test_root"
@@ -105,7 +107,7 @@ if [[ -e "$host_exec" || -L "$host_exec" ]]; then
     echo 'The disposable account already has a host-exec shim.' >&2
     exit 1
 fi
-canaries+=("$host_exec")
+installed_shim="$host_exec"
 flatpak run --user --command=t3code-install-host-exec "$app"
 test -x "$host_exec"
 flatpak run --user --command=sh "$app" -ec '
