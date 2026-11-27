@@ -77,6 +77,36 @@ the launcher leaves it off `PATH`.
 
 When installed normally, those resolve under `~/.var/app/com.t3tools.t3code/data/npm-global` and `~/.var/app/com.t3tools.t3code/cache/npm`.
 
+## Inspect permissions and tool extensions
+
+Run the read-only controller from a host terminal in this repository. It
+requires Python 3.9 or newer and Flatpak with `flatpak info --file-access`.
+
+```bash
+./scripts/t3-flatpak-ctl status
+./scripts/t3-flatpak-ctl check-path "$HOME/Dev/my-project"
+./scripts/t3-flatpak-ctl plan project "$HOME/Dev/my-project"
+./scripts/t3-flatpak-ctl plan extension my-tools com.t3tools.t3code.Tools.Example
+```
+
+The default inspection scope is the user installation. Use `--system`
+before `status` or `check-path` to inspect the default system installation.
+`status --json` reports the same fields as the text view without override
+environment values. It shows the app manifest, global and per-app overrides,
+Flatpak's installed permission defaults, and readable running instances
+separately. An instance can still be on an older build or have different
+permissions due to its launch options.
+
+`check-path` prints Flatpak's file-access estimate for the requested and
+resolved paths when they differ. A running process or a portal grant can
+have different access. A matching Tools ref has the declared architecture
+and branch. The mounted-tool list comes from each running instance.
+
+`plan` prints a command and a restart reminder. Project plans use a
+read-only filesystem grant. Extension plans take a remote you choose and
+use the branch declared by the app. Verify the publisher and the remote
+before using the printed install command.
+
 ## Optional host command shim
 
 If you have already authorized host command execution for this Flatpak, you
