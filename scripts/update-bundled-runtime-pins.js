@@ -56,7 +56,7 @@ function replaceExactlyOnce(manifest, pattern, replacement, label) {
 
 function readCurrentPins(manifest) {
   const node = /url: https:\/\/nodejs\.org\/dist\/(v(\d+)\.\d+\.\d+)\/node-\1-linux-x64\.tar\.xz\n\s+sha256: ([a-f0-9]{64})/.exec(manifest);
-  const git = /url: https:\/\/mirrors\.edge\.kernel\.org\/pub\/software\/scm\/git\/git-((\d+)\.\d+\.\d+)\.tar\.xz\n\s+sha256: ([a-f0-9]{64})/.exec(manifest);
+  const git = /url: https:\/\/cdn\.kernel\.org\/pub\/software\/scm\/git\/git-((\d+)\.\d+\.\d+)\.tar\.xz\n\s+sha256: ([a-f0-9]{64})/.exec(manifest);
   const openssh = /url: https:\/\/cdn\.openbsd\.org\/pub\/OpenBSD\/OpenSSH\/portable\/openssh-((\d+)\.\d+p\d+)\.tar\.gz\n\s+sha256: ([a-f0-9]{64})/.exec(manifest);
 
   if (!node) fail("Could not find current Node.js source pin in manifest");
@@ -96,7 +96,7 @@ async function latestNode(current) {
 }
 
 async function latestGit(current) {
-  const sums = await fetchText("https://mirrors.edge.kernel.org/pub/software/scm/git/sha256sums.asc");
+  const sums = await fetchText("https://cdn.kernel.org/pub/software/scm/git/sha256sums.asc");
   const candidates = [];
   for (const match of sums.matchAll(/^([a-f0-9]{64})  git-((\d+)\.\d+\.\d+)\.tar\.xz$/gm)) {
     const [, sha256, version, major] = match;
@@ -108,7 +108,7 @@ async function latestGit(current) {
   const latest = candidates[0];
   return {
     version: latest.version,
-    url: `https://mirrors.edge.kernel.org/pub/software/scm/git/git-${latest.version}.tar.xz`,
+    url: `https://cdn.kernel.org/pub/software/scm/git/git-${latest.version}.tar.xz`,
     sha256: latest.sha256,
   };
 }
@@ -141,7 +141,7 @@ function replaceNode(manifest, next) {
 
 function replaceGit(manifest, next) {
   assertSha256Hex(next.sha256, "Git");
-  const blockPattern = /url: https:\/\/mirrors\.edge\.kernel\.org\/pub\/software\/scm\/git\/git-\d+\.\d+\.\d+\.tar\.xz\n\s+sha256: [a-f0-9]{64}/g;
+  const blockPattern = /url: https:\/\/cdn\.kernel\.org\/pub\/software\/scm\/git\/git-\d+\.\d+\.\d+\.tar\.xz\n\s+sha256: [a-f0-9]{64}/g;
   return replaceExactlyOnce(
     manifest,
     blockPattern,
