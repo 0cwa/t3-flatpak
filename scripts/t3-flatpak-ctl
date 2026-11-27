@@ -1,0 +1,259 @@
+#!/usr/bin/env python3
+"""Inspect the host's T3 Code Flatpak and preview operator commands."""
+
+import argparse
+import configparser
+import json
+import os
+from pathlib import Path
+import re
+import shlex
+import subprocess
+
+
+APP = "com.t3tools.t3code"
+TOOLS = f"{APP}.Tools"
+HOST_PORTAL = "org.freedesktop.Flatpak"
+CONTEXT_KEYS = ("shared", "sockets", "devices", "filesystems", "persistent")
+
+
+class ControllerError(Exception):
+    pass
+
+
+def flatpak(command, *args):
+    result = subprocess.run(
+        ["flatpak", command, *args],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={**os.environ, "LC_ALL": "C"},
+    )
+    if result.returncode:
+        raise ControllerError(f"flatpak {command} failed for the requested installation or ref")
+    return result.stdout
+
+
+def parse_metadata(text, label):
+    parser = configparser.ConfigParser(interpolation=None, delimiters=("=",))
+    parser.optionxform = str
+    try:
+        parser.read_string(text)
+    except configparser.Error:
+        # The raw metadata can contain environment values.
+        raise ControllerError(f"could not parse {label}") from None
+    return parser
+
+
+def entries(value):
+    return [entry for entry in value.split(";") if entry]
+
+
+def permissions(metadata):
+    context = metadata["Context"] if metadata.has_section("Context") else {}
+    result = {key: entries(context[key]) for key in CONTEXT_KEYS if key in context}
+    policy = metadata["Session Bus Policy"] if metadata.has_section("Session Bus Policy") else {}
+    # Show both exact and wildcard rules without trying to replicate the D-Bus proxy.
+    result["host_portal_rules"] = {
+        name: mode
+        for name, mode in policy.items()
+        if name in (HOST_PORTAL, "*")
+        or (name.endswith(".*") and HOST_PORTAL.startswith(name[:-1]))
+    }
+    return result
+
+
+def deployed(scope):
+    ref = flatpak("info", scope, "--show-ref", APP).strip()
+    parts = ref.split("/")
+    if len(parts) != 4 or parts[:2] != ["app", APP]:
+        raise ControllerError("Flatpak returned an unexpected T3 Code application ref")
+    metadata = parse_metadata(flatpak("info", scope, "--show-metadata", ref), "app metadata")
+    return ref, parts[2], metadata
+
+
+def tool_branches(metadata):
+    section = f"Extension {TOOLS}"
+    if not metadata.has_section(section):
+        return []
+    if metadata.has_option(section, "versions"):
+        return entries(metadata.get(section, "versions"))
+    version = metadata.get(section, "version", fallback="")
+    return [version] if version else []
+
+
+def installed_tools(arch, branches):
+    tools = []
+    for row in flatpak("list", "--runtime", "--columns=ref:f,installation:f,origin:f").splitlines():
+        columns = row.split("\t")
+        if len(columns) != 3:
+            continue
+        ref, installation, origin = columns
+        parts = ref.removeprefix("runtime/").split("/")
+        if len(parts) != 3 or not parts[0].startswith(f"{TOOLS}."):
+            continue
+        tools.append({
+            "ref": "/".join(parts),
+            "installation": installation,
+            "origin": origin,
+            "matches_arch_and_branch": parts[1] == arch and parts[2] in branches,
+        })
+    return tools
+
+
+def running_instances(location, commit, runtime_dir):
+    instances = []
+    for row in flatpak("ps", "--columns=instance:f,application:f").splitlines():
+        fields = row.split()
+        if len(fields) != 2 or fields[1] != APP or not fields[0].isdigit():
+            continue
+        instance_id = fields[0]
+        try:
+            info = (runtime_dir / ".flatpak" / instance_id / "info").read_text()
+        except FileNotFoundError:
+            continue  # The instance exited after flatpak ps.
+        metadata = parse_metadata(info, "running instance metadata")
+        instance = metadata["Instance"] if metadata.has_section("Instance") else {}
+        app_path = instance.get("original-app-path", instance.get("app-path", ""))
+        if not app_path or Path(app_path).resolve().parent.parent != location.parent:
+            continue
+        child = instance.get("sandbox") == "true"
+        app_commit = instance.get("app-commit")
+        instances.append({
+            "id": instance_id,
+            "kind": "restricted child" if child else "app",
+            "app_commit": app_commit,
+            "restart_for_installed_build": None if child or not app_commit else app_commit != commit,
+            "mounted_tools": [
+                entry for entry in entries(instance.get("app-extensions", ""))
+                if entry.startswith(f"{TOOLS}.")
+            ],
+            "permissions": permissions(metadata),
+        })
+    return instances
+
+
+def status(scope, ref, arch, metadata):
+    commit = flatpak("info", scope, "--show-commit", ref).strip()
+    location = Path(flatpak("info", scope, "--show-location", ref).strip()).resolve()
+    layers = {"manifest": permissions(metadata)}
+    for flag in ("--system", "--user"):
+        for label, target in (("global", ()), ("app", (APP,))):
+            source = f"{flag[2:]} {label} override"
+            layers[source] = permissions(
+                parse_metadata(flatpak("override", flag, "--show", *target), source)
+            )
+    next_launch = permissions(parse_metadata(
+        flatpak("info", scope, "--show-permissions", ref), "installed permissions"
+    ))
+    branches = tool_branches(metadata)
+    runtime_dir = Path(os.environ.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}")
+    return {
+        "installation": scope[2:],
+        "ref": ref,
+        "installed_commit": commit,
+        "next_launch_defaults": next_launch,
+        "permission_layers": layers,
+        "tool_branches": branches,
+        "installed_tools": installed_tools(arch, branches),
+        "running_instances": running_instances(location, commit, runtime_dir),
+    }
+
+
+def print_status(data):
+    rules = data["next_launch_defaults"]["host_portal_rules"]
+    print(f"Host portal rules for next launch: {rules or 'none reported'}")
+    print(f"Installed ({data['installation']}): {data['ref']} at {data['installed_commit']}")
+    print(f"Next launch defaults: {data['next_launch_defaults']}")
+    for name, layer in data["permission_layers"].items():
+        print(f"  {name}: {layer}")
+    print(f"Tools branches: {', '.join(data['tool_branches']) or 'none declared'}")
+    for tool in data["installed_tools"]:
+        compatibility = "matching arch and branch" if tool["matches_arch_and_branch"] else "different arch or branch"
+        print(f"  {tool['ref']} ({tool['installation']}, {tool['origin']}; {compatibility})")
+    if not data["installed_tools"]:
+        print("  No Tools extensions installed")
+    if not data["running_instances"]:
+        print("No readable running instances for this installation and ref")
+    for instance in data["running_instances"]:
+        print(f"Running {instance['kind']} {instance['id']}: {instance['app_commit'] or 'commit unknown'}")
+        restart = instance["restart_for_installed_build"]
+        if restart is not None:
+            print(f"  Restart needed for installed build: {'yes' if restart else 'no'}")
+        print(f"  Mounted tools: {', '.join(instance['mounted_tools']) or 'none reported'}")
+        print(f"  Running permissions: {instance['permissions']}")
+
+
+def check_path(scope, ref, path):
+    requested = path.absolute()
+    resolved = requested.resolve(strict=True)
+    for spelling in dict.fromkeys((requested, resolved)):
+        access = flatpak("info", scope, f"--file-access={spelling}", ref).strip()
+        if access not in ("hidden", "read-only", "read-write"):
+            raise ControllerError("Flatpak returned an unknown file-access result")
+        print(f"{spelling}: {access}")
+    print("Flatpak's installed configuration estimate for this path. Running and portal access can differ.")
+
+
+def plan(scope, args, arch, metadata):
+    if scope != "--user":
+        raise ControllerError("plan is available for the user installation")
+    if args.kind == "project":
+        directory = args.directory.resolve(strict=True)
+        home = Path.home().resolve()
+        if not directory.is_dir() or directory == home or directory in home.parents:
+            raise ControllerError("choose a specific project directory")
+        if any(char in str(directory) for char in ":;\\\r\n"):
+            raise ControllerError("the project path contains a Flatpak permission delimiter")
+        command = ["flatpak", "override", scope, f"--filesystem={directory}:ro", APP]
+    else:
+        branches = tool_branches(metadata)
+        if len(branches) != 1:
+            raise ControllerError("the app does not declare one unambiguous Tools branch")
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", args.remote):
+            raise ControllerError("choose a named Flatpak remote")
+        if not re.fullmatch(re.escape(TOOLS) + r"(?:\.[A-Za-z0-9_][A-Za-z0-9_-]*)+", args.extension):
+            raise ControllerError(f"choose an extension under {TOOLS}")
+        command = ["flatpak", "install", scope, "--", args.remote,
+                   f"runtime/{args.extension}/{arch}/{branches[0]}"]
+        print("Check the remote and extension publisher before installing.")
+    print(shlex.join(command))
+    print("Preview only. Restart T3 Code after applying the command.")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument("--user", dest="scope", action="store_const", const="--user")
+    scope.add_argument("--system", dest="scope", action="store_const", const="--system")
+    parser.set_defaults(scope="--user")
+    commands = parser.add_subparsers(dest="command", required=True)
+    commands.add_parser("status").add_argument("--json", action="store_true")
+    commands.add_parser("check-path").add_argument("path", type=Path)
+    plans = commands.add_parser("plan", help="preview a command without applying it")
+    kinds = plans.add_subparsers(dest="kind", required=True)
+    kinds.add_parser("project").add_argument("directory", type=Path)
+    extension = kinds.add_parser("extension")
+    extension.add_argument("remote")
+    extension.add_argument("extension")
+    args = parser.parse_args()
+    try:
+        if Path("/.flatpak-info").is_file():
+            raise ControllerError("run this controller in a host terminal outside Flatpak")
+        ref, arch, metadata = deployed(args.scope)
+        if args.command == "status":
+            data = status(args.scope, ref, arch, metadata)
+            if args.json:
+                print(json.dumps(data, indent=2))
+            else:
+                print_status(data)
+        elif args.command == "check-path":
+            check_path(args.scope, ref, args.path)
+        else:
+            plan(args.scope, args, arch, metadata)
+    except (ControllerError, OSError, UnicodeError) as error:
+        parser.exit(1, f"t3-flatpak-ctl: {error}\n")
+
+
+if __name__ == "__main__":
+    main()
