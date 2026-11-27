@@ -41,6 +41,7 @@ flatpak remote-add --user --if-not-exists flathub \
     https://dl.flathub.org/repo/flathub.flatpakrepo
 flatpak install --user --noninteractive "$bundle"
 app=com.t3tools.t3code
+host_exec="$HOME/.var/app/$app/data/npm-global/bin/host-exec"
 
 # Inspect the actual installed application's permissions, not just its source.
 flatpak info --user --show-permissions "$app" > "$test_root/permissions"
@@ -98,6 +99,22 @@ for grant in filesystems:
 assert p.get('Session Bus Policy', 'org.freedesktop.Flatpak', fallback='none') == 'none'
 print('Installed permission checks passed')
 PY
+
+# The bundled installer is opt-in and must not grant host portal access.
+if [[ -e "$host_exec" || -L "$host_exec" ]]; then
+    echo 'The disposable account already has a host-exec shim.' >&2
+    exit 1
+fi
+canaries+=("$host_exec")
+flatpak run --user --command=t3code-install-host-exec "$app"
+test -x "$host_exec"
+flatpak run --user --command=sh "$app" -ec '
+    shim="$XDG_DATA_HOME/npm-global/bin/host-exec"
+    cmp "$shim" /app/lib/t3-host-exec/host-exec
+    if "$shim" true; then
+        echo "Host execution unexpectedly available by default" >&2
+        exit 1
+    fi'
 
 # Start a dedicated agent with only a temporary key. Never reuse the real agent.
 mkdir "$test_root/public"

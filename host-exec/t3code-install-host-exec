@@ -1,0 +1,52 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+    echo 'Usage: t3code-install-host-exec [--replace]'
+}
+
+fail() {
+    printf '%s\n' "$1" >&2
+    exit 1
+}
+
+replace=false
+case "${1:-}" in
+    '') ;;
+    --replace) replace=true ;;
+    --help|-h) usage; exit 0 ;;
+    *) usage >&2; exit 2 ;;
+esac
+if (( $# > 1 )); then
+    usage >&2
+    exit 2
+fi
+
+[[ "${FLATPAK_ID:-}" == com.t3tools.t3code ]] ||
+    fail 'Run this installer inside the T3 Code Flatpak.'
+app_data="$HOME/.var/app/com.t3tools.t3code/data"
+[[ -d "$app_data" && ! -L "$app_data" && "${XDG_DATA_HOME:-$app_data}" -ef "$app_data" ]] ||
+    fail 'The T3 Code app data directory is unavailable.'
+
+prefix="$app_data/npm-global"
+bin="$prefix/bin"
+destination="$bin/host-exec"
+[[ ! -L "$prefix" && ! -L "$bin" ]] ||
+    fail 'Refusing to install through a symlink.'
+if [[ -e "$destination" || -L "$destination" ]]; then
+    [[ -f "$destination" && ! -L "$destination" ]] ||
+        fail 'The existing host-exec is not a regular file.'
+    "$replace" || fail 'host-exec already exists. Use --replace to update it.'
+fi
+
+installer=$(readlink -f -- "${BASH_SOURCE[0]}")
+mkdir -p -- "$bin"
+staged=$(mktemp -- "$bin/.host-exec.XXXXXXXX")
+trap 'rm -f -- "$staged"' EXIT
+install -m 0755 -- "${installer%/*}/host-exec" "$staged"
+if "$replace"; then
+    mv -fT -- "$staged" "$destination"
+else
+    ln -T -- "$staged" "$destination"
+fi
+printf 'Installed %s. The Flatpak permissions are unchanged.\n' "$destination"

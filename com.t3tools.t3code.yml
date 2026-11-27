@@ -188,6 +188,8 @@ modules:
       - install -Dm755 preview/launch.mjs /app/lib/t3-preview/launch.mjs
       - install -d /app/tools
       - install -Dm755 t3code-install-provider /app/bin/t3code-install-provider
+      - install -Dm755 host-exec/host-exec host-exec/t3code-install-host-exec -t /app/lib/t3-host-exec/
+      - ln -s ../lib/t3-host-exec/t3code-install-host-exec /app/bin/t3code-install-host-exec
       - install -Dm644 android_setup.py /app/lib/t3-android/android_setup.py
       - install -Dm644 device-hub.mjs /app/lib/t3-android/device-hub.mjs
       - install -Dm755 t3code-android-setup t3code-android-diagnostics -t /app/bin/
@@ -204,6 +206,9 @@ modules:
         dest: preview
       - type: file
         path: t3code-install-provider
+      - type: dir
+        path: host-exec
+        dest: host-exec
       - type: file
         path: scripts/android_setup.py
       - type: file
